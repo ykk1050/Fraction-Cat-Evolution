@@ -1,0 +1,446 @@
+/* ===================================================================
+   분수 고양이 진화 — 모바일(안드로이드 스마트패드 세로모드) 전용 스타일
+   =================================================================== */
+
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+:root {
+  --bg-deep: #1b1033;
+  --bg-mid: #2d1b5a;
+  --panel: #38256e;
+  --panel-light: #4a3490;
+  --accent: #ffcc4d;
+  --accent-deep: #ff9f1c;
+  --pink: #ff6fa5;
+  --good: #4ade80;
+  --bad: #ff5c5c;
+  --text: #fff7ff;
+  --text-dim: #c9bce8;
+  --line: #ff5c5c;
+}
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: var(--bg-deep);
+  font-family: "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  color: var(--text);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+#app {
+  position: relative;
+  width: calc(100 * var(--vw));
+  height: calc(100 * var(--vh));
+  height: 100dvh;
+  margin: 0 auto;
+  max-width: 800px;
+  background: linear-gradient(180deg, var(--bg-deep) 0%, var(--bg-mid) 100%);
+  overflow: hidden;
+}
+
+/* ===================== 화면 전환 ===================== */
+.screen { position: absolute; inset: 0; display: none; flex-direction: column; }
+.screen.active { display: flex; }
+
+/* ===================== 시작 화면 ===================== */
+#screen-start {
+  align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 30%, #4a3490 0%, var(--bg-deep) 70%);
+}
+.start-box { display: flex; flex-direction: column; align-items: center; gap: calc(2.2 * var(--vh)); padding: calc(6 * var(--vw)); }
+.game-title {
+  font-size: calc(11 * var(--vw)); line-height: 1.1; text-align: center; font-weight: 900;
+  color: var(--accent);
+  text-shadow: 0 calc(0.6 * var(--vh)) 0 var(--accent-deep), 0 calc(1.2 * var(--vh)) calc(2 * var(--vh)) rgba(0,0,0,.5);
+}
+.game-subtitle { font-size: calc(4 * var(--vw)); color: var(--text-dim); text-align: center; }
+
+/* ===================== 버튼 ===================== */
+.btn {
+  font-family: inherit; font-weight: 800; cursor: pointer;
+  border: none; border-radius: calc(3 * var(--vw)); color: #2a1b4a;
+  padding: calc(1.8 * var(--vh)) calc(7 * var(--vw)); font-size: calc(4.4 * var(--vw));
+  transition: transform .08s ease, filter .1s ease;
+}
+.btn:active { transform: scale(0.95); filter: brightness(1.08); }
+.btn-primary { background: linear-gradient(180deg, var(--accent) 0%, var(--accent-deep) 100%); box-shadow: 0 calc(0.6 * var(--vh)) 0 #c97a00; }
+.btn-ghost { background: transparent; color: var(--text-dim); box-shadow: inset 0 0 0 calc(0.35 * var(--vw)) var(--panel-light); }
+.btn-lg { padding: calc(2.4 * var(--vh)) calc(12 * var(--vw)); font-size: calc(5.4 * var(--vw)); }
+.btn-mini { padding: calc(0.9 * var(--vh)) calc(3.5 * var(--vw)); font-size: calc(3.2 * var(--vw)); border-radius: calc(2 * var(--vw)); background: var(--panel-light); color: var(--text); }
+
+/* ===================== 게임 화면 ===================== */
+#screen-game { padding: calc(1.2 * var(--vh)) calc(2 * var(--vw)); gap: calc(1 * var(--vh)); }
+
+#hud {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: calc(1 * var(--vw));
+  background: var(--panel); border-radius: calc(2.5 * var(--vw)); padding: calc(1.2 * var(--vh)) calc(1.5 * var(--vw));
+}
+.hud-cell { display: flex; flex-direction: column; align-items: center; }
+.hud-label { font-size: calc(2.8 * var(--vw)); color: var(--text-dim); }
+.hud-value { font-size: calc(4.6 * var(--vw)); font-weight: 900; color: var(--accent); }
+
+#next-bar {
+  display: flex; align-items: center; gap: calc(2.5 * var(--vw));
+  background: var(--panel); border-radius: calc(2.5 * var(--vw)); padding: calc(0.8 * var(--vh)) calc(3 * var(--vw));
+}
+.next-label { font-size: calc(3.2 * var(--vw)); color: var(--text-dim); }
+.next-cat {
+  width: calc(9 * var(--vw)); height: calc(9 * var(--vw)); border-radius: 50%;
+  background-size: cover; background-position: center;
+  box-shadow: inset 0 0 0 calc(0.4 * var(--vw)) var(--panel-light);
+}
+#btn-pause { margin-left: auto; }
+
+#board-wrap {
+  position: relative; flex: 1;
+  margin: 0 calc(5 * var(--vw));                /* 좌우폭을 조금 줄임 */
+  border-radius: calc(3 * var(--vw)); overflow: hidden;
+  background: linear-gradient(180deg, #20143f 0%, #160d2c 100%);
+  box-shadow: inset 0 0 calc(6 * var(--vw)) rgba(0,0,0,.6);
+}
+#game-canvas {
+  display: block; width: 100%; height: 100%;
+  touch-action: none;   /* 드래그 시 브라우저 스크롤/줌이 가로채지 않도록 */
+}
+
+/* 최소공배수 힌트 (치즈냥의 마법 분모) */
+.lcm-hint {
+  position: absolute; top: calc(2 * var(--vh)); right: calc(3 * var(--vw));
+  background: var(--accent); color: #2a1b4a;
+  font-weight: 900; font-size: calc(4 * var(--vw));
+  padding: calc(1 * var(--vh)) calc(3 * var(--vw)); border-radius: calc(2 * var(--vw));
+  box-shadow: 0 calc(0.5 * var(--vh)) calc(1.5 * var(--vh)) rgba(0,0,0,.5);
+}
+
+/* 진화 순서 — 팝업 안의 그리드 (게임 화면을 가리지 않음) */
+.cat-guide-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: calc(3 * var(--vw)); padding: calc(1 * var(--vh)) 0;
+  width: 100%;
+  justify-items: center;
+}
+.cat-guide-item {
+  position: relative;
+  width: calc(18 * var(--vw)); height: calc(18 * var(--vw)); border-radius: 50%;
+  background-size: cover; background-position: center;
+  background-color: #2a1b4a;
+  box-shadow: inset 0 0 0 calc(0.4 * var(--vw)) rgba(255, 204, 77, 0.35);
+}
+.cat-guide-item .cg-num {
+  position: absolute; left: calc(-0.8 * var(--vw)); top: calc(-0.8 * var(--vw));
+  width: calc(5.6 * var(--vw)); height: calc(5.6 * var(--vw)); border-radius: 50%;
+  background: var(--pink); color: #fff;
+  font-size: calc(3 * var(--vw)); font-weight: 900;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 calc(0.3 * var(--vh)) calc(0.8 * var(--vh)) rgba(0,0,0,0.4);
+}
+
+/* 콤보 플래시 — 정답 1회마다 2초간 노출 후 서서히 사라짐 */
+.combo-flash {
+  position: absolute; top: 38%; left: 50%; transform: translate(-50%,-50%);
+  font-size: calc(10 * var(--vw)); font-weight: 900; color: var(--pink);
+  text-shadow: 0 0 calc(4 * var(--vw)) rgba(255,111,165,.8);
+  pointer-events: none; animation: comboPop 2s ease-out forwards;
+  white-space: nowrap;
+}
+@keyframes comboPop {
+  0%   { transform: translate(-50%,-50%) scale(0.3); opacity: 0; }
+  10%  { transform: translate(-50%,-50%) scale(1.18); opacity: 1; }
+  20%  { transform: translate(-50%,-50%) scale(1.0);  opacity: 1; }
+  70%  { transform: translate(-50%,-50%) scale(1.0);  opacity: 1; }
+  100% { transform: translate(-50%,-70%) scale(0.95); opacity: 0; }
+}
+
+/* 흔들기 애니메이션 (야옹 믹서기) */
+.shake { animation: shake .5s ease-in-out; }
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20% { transform: translateX(calc(-2.5 * var(--vw))); }
+  40% { transform: translateX(calc(2.5 * var(--vw))); }
+  60% { transform: translateX(calc(-1.8 * var(--vw))); }
+  80% { transform: translateX(calc(1.8 * var(--vw))); }
+}
+
+/* ===================== 아이템 바 ===================== */
+#item-bar {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: calc(1.5 * var(--vw));
+  background: var(--panel); border-radius: calc(2.5 * var(--vw)); padding: calc(1 * var(--vh)) calc(1.5 * var(--vw));
+}
+.item-btn {
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  gap: calc(0.4 * var(--vh)); background: var(--panel-light); border: none; cursor: pointer;
+  border-radius: calc(2 * var(--vw)); padding: calc(0.8 * var(--vh)) calc(0.4 * var(--vw)); color: var(--text);
+  transition: transform .08s ease;
+}
+.item-btn:active { transform: scale(0.92); }
+.item-btn:disabled { opacity: .35; }
+.item-btn.item-empty, .math-item-btn.item-empty { opacity: 0.55; }
+.item-icon {
+  width: calc(8 * var(--vw)); height: calc(8 * var(--vw)); border-radius: calc(1.5 * var(--vw));
+  background-size: cover; background-position: center;
+  background-color: #2a1b4a;
+  display: flex; align-items: center; justify-content: center;
+  font-size: calc(5 * var(--vw));
+}
+.item-name { font-size: calc(2.4 * var(--vw)); text-align: center; line-height: 1.1; }
+.item-count {
+  position: absolute; top: calc(-0.6 * var(--vh)); right: calc(-0.6 * var(--vw));
+  background: var(--pink); color: #fff; font-size: calc(2.6 * var(--vw)); font-weight: 900;
+  min-width: calc(4.5 * var(--vw)); height: calc(4.5 * var(--vw)); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ===================== 오버레이 / 팝업 ===================== */
+.overlay {
+  position: absolute; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 5, 25, .8); backdrop-filter: blur(2px);
+  padding: calc(5 * var(--vw));
+}
+.hidden { display: none !important; }
+
+.popup-card {
+  width: 100%; max-width: calc(90 * var(--vw));
+  background: linear-gradient(180deg, var(--panel) 0%, var(--bg-mid) 100%);
+  border: calc(0.5 * var(--vw)) solid var(--panel-light);
+  border-radius: calc(4 * var(--vw)); padding: calc(4 * var(--vh)) calc(6 * var(--vw));
+  display: flex; flex-direction: column; align-items: center; gap: calc(1.8 * var(--vh));
+  box-shadow: 0 calc(2 * var(--vh)) calc(5 * var(--vh)) rgba(0,0,0,.6);
+  max-height: calc(94 * var(--vh)); overflow-y: auto;
+}
+.popup-wide { max-width: calc(96 * var(--vw)); }
+.popup-floating { animation: floatIn .35s ease-out; }
+@keyframes floatIn {
+  0% { transform: translateY(calc(6 * var(--vh))) scale(0.9); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+.popup-title { font-size: calc(6.5 * var(--vw)); color: var(--accent); font-weight: 900; }
+.popup-actions { display: flex; gap: calc(3 * var(--vw)); flex-wrap: wrap; justify-content: center; }
+
+/* ===================== 수학 문제 팝업 ===================== */
+.popup-head { display: flex; justify-content: space-between; width: 100%; align-items: center; }
+.math-tag {
+  background: var(--pink); color: #fff; font-weight: 800;
+  font-size: calc(3.4 * var(--vw)); padding: calc(0.6 * var(--vh)) calc(3 * var(--vw)); border-radius: calc(2 * var(--vw));
+}
+.math-timer { font-size: calc(3.2 * var(--vw)); color: var(--text-dim); }
+.math-guide { font-size: calc(3.4 * var(--vw)); color: var(--text-dim); text-align: center; }
+.math-question {
+  font-size: calc(9 * var(--vw)); font-weight: 900; color: var(--text);
+  text-align: center; padding: calc(1.5 * var(--vh)) 0;
+}
+.math-hint { font-size: calc(3.4 * var(--vw)); color: var(--text-dim); text-align: center; }
+.math-hint b { color: var(--accent); }
+
+/* 정답 입력 — 자연수 + 분수(분자/분모). 가상 키패드로만 입력 */
+.answer-area { display: flex; align-items: center; gap: calc(3 * var(--vw)); }
+.frac-stack { display: flex; flex-direction: column; align-items: center; gap: calc(0.8 * var(--vh)); }
+.ans-field {
+  font-family: inherit; font-weight: 800; font-size: calc(6 * var(--vw));
+  min-width: calc(26 * var(--vw)); min-height: calc(7 * var(--vh)); padding: calc(0.6 * var(--vh)) calc(2 * var(--vw));
+  text-align: center; border: calc(0.7 * var(--vw)) solid transparent;
+  border-radius: calc(2 * var(--vw)); background: #fff; color: #2a1b4a; cursor: pointer;
+}
+#ans-whole { min-width: calc(22 * var(--vw)); }
+.ans-field.placeholder { color: #b3a9c9; font-weight: 700; font-size: calc(3.8 * var(--vw)); }
+.ans-field.active {
+  border-color: var(--accent-deep);
+  box-shadow: 0 0 0 calc(0.5 * var(--vw)) rgba(255, 159, 28, 0.35);
+}
+.frac-bar { width: calc(30 * var(--vw)); height: calc(0.7 * var(--vh)); background: var(--accent); border-radius: calc(1 * var(--vh)); }
+
+/* 가상 숫자 키패드 (브라우저·안드로이드 기본 키보드 대신 사용) */
+.keypad {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: calc(1.6 * var(--vw)); width: 100%; max-width: calc(74 * var(--vw));
+}
+.key {
+  font-family: inherit; font-weight: 900; font-size: calc(5.4 * var(--vw));
+  padding: calc(1.5 * var(--vh)) 0; border: none; border-radius: calc(2 * var(--vw)); cursor: pointer;
+  background: #fff; color: #2a1b4a;
+}
+.key:active { transform: scale(0.93); }
+.key-fn { background: var(--pink); color: #fff; }
+
+.math-feedback { font-size: calc(3.6 * var(--vw)); font-weight: 800; min-height: calc(4 * var(--vw)); text-align: center; }
+.math-feedback.good { color: var(--good); }
+.math-feedback.bad { color: var(--bad); }
+
+/* 분수 표기 (math.js 가 생성하는 마크업) */
+.fr {
+  display: inline-flex; flex-direction: column; align-items: center;
+  vertical-align: middle; line-height: 1.05;
+}
+.fr-n { border-bottom: calc(0.6 * var(--vw)) solid currentColor; padding: 0 calc(1.6 * var(--vw)) calc(0.3 * var(--vh)); }
+.fr-d { padding: calc(0.3 * var(--vh)) calc(1.6 * var(--vw)) 0; }
+.fr-op { margin: 0 calc(1.4 * var(--vw)); }
+.fr-whole, .fr-q { padding: 0 calc(1 * var(--vw)); }
+.fr-q { color: var(--accent); }
+
+/* 수학 팝업 안의 미니 아이템 행 (문제 풀이 중 사용 가능한 아이템) */
+.math-items {
+  display: flex; gap: calc(2.5 * var(--vw)); justify-content: center; width: 100%;
+}
+.math-item-btn {
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  gap: calc(0.2 * var(--vh)); background: var(--panel-light); border: none; cursor: pointer;
+  border-radius: calc(1.8 * var(--vw)); padding: calc(0.8 * var(--vh)) calc(2.4 * var(--vw)); color: var(--text); font-family: inherit;
+}
+.math-item-btn:active { transform: scale(0.94); }
+.mi-icon { font-size: calc(5 * var(--vw)); }
+.mi-name { font-size: calc(2.5 * var(--vw)); }
+.mi-count {
+  position: absolute; top: calc(-0.5 * var(--vh)); right: calc(-0.6 * var(--vw));
+  background: var(--pink); color: #fff; font-size: calc(2.2 * var(--vw)); font-weight: 900;
+  min-width: calc(3.8 * var(--vw)); height: calc(3.8 * var(--vw)); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* 아이템 정보 / 사용 확인 팝업 */
+.popup-narrow { max-width: calc(78 * var(--vw)); }
+.item-info-icon {
+  font-size: calc(13 * var(--vw)); line-height: 1;
+  width: calc(22 * var(--vw)); height: calc(22 * var(--vw)); border-radius: 50%;
+  background: var(--panel-light);
+  display: flex; align-items: center; justify-content: center;
+}
+.item-info-desc {
+  font-size: calc(3.8 * var(--vw)); color: var(--text);
+  text-align: center; line-height: 1.5;
+}
+.item-info-count {
+  font-size: calc(3.4 * var(--vw)); color: var(--accent); font-weight: 800;
+}
+#btn-item-use:disabled { opacity: 0.55; }
+
+/* 5연속 정답 보상 — 아이템 선택 모달 */
+.reward-guide { font-size: calc(3.6 * var(--vw)); color: var(--text-dim); text-align: center; }
+.reward-list {
+  display: grid; grid-template-columns: 1fr 1fr; gap: calc(2 * var(--vw)); width: 100%;
+}
+.reward-card {
+  display: flex; flex-direction: column; align-items: center; gap: calc(0.5 * var(--vh));
+  background: var(--panel-light); border: none; border-radius: calc(2.5 * var(--vw));
+  padding: calc(1.6 * var(--vh)) calc(2 * var(--vw)); color: var(--text); cursor: pointer; font-family: inherit;
+}
+.reward-card:active { transform: scale(0.95); }
+.reward-icon { font-size: calc(7.5 * var(--vw)); line-height: 1; }
+.reward-name { font-size: calc(3.6 * var(--vw)); font-weight: 900; color: var(--accent); }
+.reward-desc {
+  font-size: calc(2.7 * var(--vw)); color: var(--text-dim);
+  text-align: center; line-height: 1.35;
+}
+
+/* 캣닢 스프레이 — 다음 고양이 선택 칸 */
+.spray-choices { display: flex; gap: calc(3 * var(--vw)); }
+.spray-choice {
+  display: flex; flex-direction: column; align-items: center; gap: calc(0.6 * var(--vh));
+  background: var(--panel-light); border: none; cursor: pointer;
+  border-radius: calc(2.5 * var(--vw)); padding: calc(1.5 * var(--vh)) calc(4 * var(--vw)); color: var(--text); font-family: inherit;
+}
+.spray-choice:active { transform: scale(0.94); }
+.spray-choice .sc-img {
+  width: calc(16 * var(--vw)); height: calc(16 * var(--vw)); border-radius: 50%;
+  background-size: cover; background-position: center; background-color: #2a1b4a;
+}
+.spray-choice .sc-name { font-size: calc(3.2 * var(--vw)); font-weight: 800; }
+
+/* ===================== 게임 오버 ===================== */
+.result-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(1.5 * var(--vh)) calc(3 * var(--vw));
+  width: 100%;
+}
+.result-grid div { display: flex; flex-direction: column; align-items: center; }
+.result-grid span { font-size: calc(3 * var(--vw)); color: var(--text-dim); }
+.result-grid b { font-size: calc(5 * var(--vw)); color: var(--accent); }
+.nickname-guide { font-size: calc(3.3 * var(--vw)); color: var(--text-dim); text-align: center; line-height: 1.5; }
+#nickname-input {
+  width: 100%; font-family: inherit; font-size: calc(5 * var(--vw)); text-align: center;
+  border: none; border-radius: calc(2 * var(--vw)); padding: calc(1.5 * var(--vh)) 0;
+  background: #fff; color: #2a1b4a;
+}
+
+/* ===================== 개인정보 모달 ===================== */
+.privacy-text { font-size: calc(4.6 * var(--vw)); font-weight: 800; text-align: center; line-height: 1.5; }
+.privacy-nickname {
+  font-size: calc(5 * var(--vw)); font-weight: 900; color: var(--accent);
+  background: var(--bg-deep); padding: calc(1 * var(--vh)) calc(5 * var(--vw)); border-radius: calc(2 * var(--vw));
+}
+
+/* ===================== 랭킹 정렬 / 검색 컨트롤 ===================== */
+.rank-controls, .rank-search {
+  display: flex; gap: calc(1.5 * var(--vw)); flex-wrap: wrap; align-items: center;
+  width: 100%; justify-content: center;
+}
+.rc-label { font-size: calc(3 * var(--vw)); color: var(--text-dim); font-weight: 800; }
+.rc-select, .rank-search input {
+  font-family: inherit; font-size: calc(3.2 * var(--vw)); font-weight: 700;
+  padding: calc(0.7 * var(--vh)) calc(2.4 * var(--vw));
+  border: none; border-radius: calc(1.6 * var(--vw));
+}
+.rc-select { background: var(--panel-light); color: var(--text); }
+.rank-search input { background: #fff; color: #2a1b4a; min-width: calc(38 * var(--vw)); }
+.btn-ghost-mini { background: transparent; color: var(--text-dim); box-shadow: inset 0 0 0 calc(0.3 * var(--vw)) var(--panel-light); }
+.rank-search-result {
+  width: 100%; background: rgba(255, 204, 77, 0.10);
+  border: calc(0.35 * var(--vw)) solid var(--accent);
+  border-radius: calc(2 * var(--vw));
+  padding: calc(1 * var(--vh)) calc(2 * var(--vw));
+  font-size: calc(2.9 * var(--vw)); color: var(--text);
+}
+.rank-search-result .srt {
+  font-size: calc(3.2 * var(--vw)); color: var(--accent); font-weight: 900;
+  margin-bottom: calc(0.6 * var(--vh));
+}
+.rank-search-result table { width: 100%; border-collapse: collapse; }
+.rank-search-result td { padding: calc(0.6 * var(--vh)) calc(0.5 * var(--vw)); text-align: center; }
+.rank-search-result .srank { color: var(--accent); font-weight: 900; }
+.rank-search-result .snone { color: var(--text-dim); padding: calc(1 * var(--vh)) 0; text-align: center; }
+
+/* 결과 화면의 너비 전체 차지 셀 (최고 고양이) */
+.result-wide { grid-column: 1 / -1; }
+
+/* ===================== 랭킹 테이블 ===================== */
+.rank-table-wrap { width: 100%; max-height: calc(58 * var(--vh)); overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.rank-table { width: 100%; border-collapse: collapse; font-size: calc(2.9 * var(--vw)); }
+.rank-table th {
+  position: sticky; top: 0; background: var(--panel-light);
+  padding: calc(1 * var(--vh)) calc(0.5 * var(--vw)); color: var(--accent); font-size: calc(2.8 * var(--vw));
+}
+.rank-table td { padding: calc(0.9 * var(--vh)) calc(0.5 * var(--vw)); text-align: center; border-bottom: calc(0.2 * var(--vw)) solid var(--panel-light); }
+.rank-table tbody tr:nth-child(1) td { color: var(--accent); font-weight: 900; }
+.rank-table tbody tr:nth-child(2) td { color: #d8d8ff; font-weight: 800; }
+.rank-table tbody tr:nth-child(3) td { color: var(--pink); font-weight: 800; }
+.rank-empty { color: var(--text-dim); padding: calc(4 * var(--vh)) 0 !important; }
+
+/* ===================== 놀이 방법 ===================== */
+.help-list { width: 100%; display: flex; flex-direction: column; gap: calc(1.4 * var(--vh)); }
+.help-list li { font-size: calc(3.7 * var(--vw)); color: var(--text); line-height: 1.4; list-style: none; padding-left: calc(6 * var(--vw)); position: relative; }
+.help-list li::before { content: "🐾"; position: absolute; left: 0; }
+.help-list b { color: var(--accent); }
+
+/* ===================== 토스트 ===================== */
+.toast {
+  position: absolute; bottom: calc(14 * var(--vh)); left: 50%; transform: translateX(-50%);
+  z-index: 80; background: rgba(0,0,0,.88); color: var(--text);
+  font-size: calc(3.6 * var(--vw)); font-weight: 700; padding: calc(1.4 * var(--vh)) calc(6 * var(--vw));
+  border-radius: calc(4 * var(--vw)); max-width: calc(84 * var(--vw)); text-align: center;
+  animation: toastIn .25s ease-out;
+}
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, calc(2 * var(--vh))); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* ===================== 가로모드 경고 =====================
+   터치 기기(스마트패드/스마트폰)에서 가로모드일 때만 표시.
+   PC(마우스 사용 = pointer:fine)에서는 가로 모니터에서도 그대로 플레이. */
+@media (orientation: landscape) and (pointer: coarse) {
+  #app::after {
+    content: "📱 기기를 세로로 돌려 주세요!";
+    position: absolute; inset: 0; z-index: 999;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg-deep); color: var(--accent);
+    font-size: calc(4 * var(--vw)); font-weight: 900; text-align: center;
+  }
+}

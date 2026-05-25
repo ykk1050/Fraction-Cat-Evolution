@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#1b1033" />
+  <title>분수 고양이 진화 (Fraction Cat Evolution)</title>
+  <!-- CSS 단위(--vw, --vh) 기본값. JS 가 #app 실제 크기 기준으로 덮어씀.
+       이 덕분에 PC 가로 모니터에서도 800px 컨테이너 기준으로 정확히 스케일됨. -->
+  <style>:root{--vw:1vw;--vh:1vh}</style>
+  <link rel="stylesheet" href="style.css?v=14" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ===================== 시작 화면 ===================== -->
+    <section id="screen-start" class="screen active">
+      <div class="start-box">
+        <h1 class="game-title">분수 고양이<br />진화</h1>
+        <p class="game-subtitle">고양이를 합쳐 분수 문제를 풀어요!</p>
+        <button id="btn-resume-game" class="btn btn-primary btn-lg hidden">이어하기</button>
+        <button id="btn-start" class="btn btn-primary btn-lg">새 게임 시작</button>
+        <button id="btn-rank-start" class="btn btn-ghost">랭킹 보기</button>
+        <button id="btn-help" class="btn btn-ghost">놀이 방법</button>
+      </div>
+    </section>
+
+    <!-- ===================== 게임 화면 ===================== -->
+    <section id="screen-game" class="screen">
+      <header id="hud">
+        <div class="hud-cell">
+          <span class="hud-label">점수</span>
+          <span id="hud-score" class="hud-value">0</span>
+        </div>
+        <div class="hud-cell">
+          <span class="hud-label">난이도</span>
+          <span id="hud-round" class="hud-value">1</span>
+        </div>
+        <div class="hud-cell">
+          <span class="hud-label">콤보</span>
+          <span id="hud-combo" class="hud-value">0</span>
+        </div>
+        <div class="hud-cell">
+          <span class="hud-label">정답률</span>
+          <span id="hud-accuracy" class="hud-value">0%</span>
+        </div>
+        <div class="hud-cell">
+          <span class="hud-label">시간</span>
+          <span id="hud-time" class="hud-value">0:00</span>
+        </div>
+      </header>
+
+      <div id="next-bar">
+        <span class="next-label">다음 고양이</span>
+        <div id="next-cat" class="next-cat"></div>
+        <button id="btn-cat-guide" class="btn btn-mini" aria-label="진화 순서 보기">📖 진화 순서</button>
+        <button id="btn-pause" class="btn btn-mini">일시정지</button>
+      </div>
+
+      <div id="board-wrap">
+        <canvas id="game-canvas"></canvas>
+        <div id="lcm-hint" class="lcm-hint hidden"></div>
+        <div id="combo-flash" class="combo-flash hidden"></div>
+      </div>
+
+      <div id="item-bar">
+        <!-- 아이템 버튼은 game.js 에서 동적으로 생성됩니다 -->
+      </div>
+    </section>
+
+    <!-- ===================== 수학 문제 팝업 ===================== -->
+    <div id="math-popup" class="overlay hidden">
+      <div class="popup-card">
+        <div class="popup-head">
+          <span id="math-tag" class="math-tag">분수의 덧셈</span>
+          <span id="math-timer" class="math-timer">생각 중...</span>
+        </div>
+        <p class="math-guide">두 고양이를 합치려면 문제를 풀어요!</p>
+        <div id="math-question" class="math-question"></div>
+        <p class="math-hint">정답은 <b>기약분수</b>로 입력하세요. 대분수는 <b>자연수 칸</b>을 함께 써요.</p>
+        <div class="answer-area">
+          <button type="button" id="ans-whole" class="ans-field placeholder" data-field="whole">자연수</button>
+          <div class="frac-stack">
+            <button type="button" id="ans-numer" class="ans-field placeholder" data-field="numer">분자</button>
+            <div class="frac-bar"></div>
+            <button type="button" id="ans-denom" class="ans-field placeholder" data-field="denom">분모</button>
+          </div>
+        </div>
+        <div id="keypad" class="keypad"></div>
+        <p id="math-feedback" class="math-feedback"></p>
+        <div id="math-items" class="math-items"></div>
+        <div class="popup-actions">
+          <button id="btn-math-submit" class="btn btn-primary">정답 확인</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 아이템 정보 / 사용 확인 ===================== -->
+    <div id="item-info-popup" class="overlay hidden">
+      <div class="popup-card popup-floating popup-narrow">
+        <div id="item-info-icon" class="item-info-icon">🎁</div>
+        <h2 id="item-info-name" class="popup-title">아이템</h2>
+        <p id="item-info-desc" class="item-info-desc"></p>
+        <p id="item-info-count" class="item-info-count">보유 0개</p>
+        <div class="popup-actions">
+          <button id="btn-item-use" class="btn btn-primary">사용</button>
+          <button id="btn-item-cancel" class="btn btn-ghost">취소</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 진화 순서 보기 ===================== -->
+    <div id="cat-guide-popup" class="overlay hidden">
+      <div class="popup-card popup-floating">
+        <h2 class="popup-title">진화 순서</h2>
+        <p class="reward-guide">같은 단계의 고양이가 만나면 다음 단계로 진화해요.</p>
+        <div id="cat-guide-grid" class="cat-guide-grid"></div>
+        <div class="popup-actions">
+          <button id="btn-cat-guide-close" class="btn btn-primary">닫기</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 5연속 정답 보상: 아이템 선택 ===================== -->
+    <div id="reward-popup" class="overlay hidden">
+      <div class="popup-card popup-floating popup-wide">
+        <h2 class="popup-title">아이템 획득!</h2>
+        <p class="reward-guide">5연속 정답을 맞혔어요! 받고 싶은 아이템을 골라요.</p>
+        <div id="reward-list" class="reward-list"></div>
+      </div>
+    </div>
+
+    <!-- ===================== 일시정지 ===================== -->
+    <div id="pause-popup" class="overlay hidden">
+      <div class="popup-card">
+        <h2 class="popup-title">일시정지</h2>
+        <button id="btn-resume" class="btn btn-primary btn-lg">계속하기</button>
+        <button id="btn-restart" class="btn btn-ghost">다시 시작</button>
+        <button id="btn-quit" class="btn btn-ghost">메인으로</button>
+      </div>
+    </div>
+
+    <!-- ===================== 게임 오버 ===================== -->
+    <div id="gameover-popup" class="overlay hidden">
+      <div class="popup-card">
+        <h2 class="popup-title">게임 끝!</h2>
+        <div class="result-grid">
+          <div><span>점수</span><b id="result-score">0</b></div>
+          <div><span>난이도</span><b id="result-round">1</b></div>
+          <div><span>최대 콤보</span><b id="result-combo">0</b></div>
+          <div><span>정답수</span><b id="result-correct">0</b></div>
+          <div><span>총문제수</span><b id="result-total">0</b></div>
+          <div><span>정답률</span><b id="result-accuracy">0%</b></div>
+          <div class="result-wide"><span>최고 고양이</span><b id="result-max-cat">-</b></div>
+          <div class="result-wide"><span>플레이 시간</span><b id="result-play-time">0:00</b></div>
+        </div>
+        <p class="nickname-guide">개인정보(본명, 전화번호 등)를 포함하지 않은 닉네임을 입력하세요.</p>
+        <input id="nickname-input" type="text" maxlength="10" placeholder="닉네임 (최대 10자)" />
+        <p id="nickname-feedback" class="math-feedback"></p>
+        <div class="popup-actions">
+          <button id="btn-submit-score" class="btn btn-primary">랭킹 등록</button>
+          <button id="btn-skip-score" class="btn btn-ghost">등록 안 함</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 개인정보 확인 모달 ===================== -->
+    <div id="privacy-popup" class="overlay hidden">
+      <div class="popup-card popup-floating">
+        <h2 class="popup-title">잠깐!</h2>
+        <p class="privacy-text">입력하신 닉네임에 개인정보가 없습니까?</p>
+        <p id="privacy-nickname" class="privacy-nickname"></p>
+        <div class="popup-actions">
+          <button id="btn-privacy-yes" class="btn btn-primary">예</button>
+          <button id="btn-privacy-no" class="btn btn-ghost">아니오</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 랭킹 화면 ===================== -->
+    <div id="rank-popup" class="overlay hidden">
+      <div class="popup-card popup-wide">
+        <h2 class="popup-title">랭킹 TOP 100</h2>
+
+        <div class="rank-controls">
+          <label class="rc-label">정렬</label>
+          <select id="rank-sort" class="rc-select">
+            <option value="score">점수</option>
+            <option value="round">난이도</option>
+            <option value="maxCombo">최대 콤보</option>
+            <option value="correctCount">정답 수</option>
+            <option value="maxCatLevel">최고 등급 고양이</option>
+            <option value="accuracy_filtered">정답률 (50문제 이상)</option>
+            <option value="clearTime_filtered">빠른 11단계 클리어</option>
+          </select>
+          <select id="rank-order" class="rc-select">
+            <option value="desc">높은 순</option>
+            <option value="asc">낮은 순</option>
+          </select>
+        </div>
+
+        <div class="rank-search">
+          <input id="rank-search-input" type="text" placeholder="닉네임 검색 (100위 밖도 검색됨)" maxlength="10" />
+          <button id="btn-rank-search" class="btn btn-mini">검색</button>
+          <button id="btn-rank-search-clear" class="btn btn-mini btn-ghost-mini">지움</button>
+        </div>
+        <div id="rank-search-result" class="rank-search-result hidden"></div>
+
+        <div class="rank-table-wrap">
+          <table class="rank-table">
+            <thead>
+              <tr>
+                <th>순위</th><th>닉네임</th><th>점수</th><th>난이도</th>
+                <th>최대콤보</th><th>정답수</th><th>총문제수</th><th>정답률</th><th>최고고양이</th><th>시간</th>
+              </tr>
+            </thead>
+            <tbody id="rank-body">
+              <tr><td colspan="10" class="rank-empty">불러오는 중...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="popup-actions">
+          <button id="btn-rank-close" class="btn btn-primary">닫기</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 놀이 방법 ===================== -->
+    <div id="help-popup" class="overlay hidden">
+      <div class="popup-card popup-wide">
+        <h2 class="popup-title">놀이 방법</h2>
+        <ul class="help-list">
+          <li>화면을 좌우로 움직여 고양이를 떨어뜨려요.</li>
+          <li>같은 고양이끼리 만나면 진화해요. 1~2단계는 <b>자동으로</b> 합쳐져요.</li>
+          <li>3단계부터는 <b>분수 문제</b>를 풀어야 한 단계 진화해요!</li>
+          <li>답은 꼭 <b>기약분수</b>로 입력해요.</li>
+          <li>고양이가 빨간 선을 넘으면 게임이 끝나요.</li>
+          <li>아이템을 사용해 어려운 순간을 넘겨요.</li>
+        </ul>
+        <div class="popup-actions">
+          <button id="btn-help-close" class="btn btn-primary">닫기</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 토스트 알림 ===================== -->
+    <div id="toast" class="toast hidden"></div>
+
+  </div>
+
+  <!-- Matter.js 물리 엔진 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
+  <script src="math.js?v=14"></script>
+  <script src="gas.js?v=14"></script>
+  <script src="game.js?v=14"></script>
+</body>
+</html>
