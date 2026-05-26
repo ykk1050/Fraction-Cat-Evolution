@@ -58,6 +58,29 @@ html, body {
 }
 .game-subtitle { font-size: calc(4 * var(--vw)); color: var(--text-dim); text-align: center; }
 
+/* '이어할 게임이 없음' 안내 */
+.resume-empty {
+  font-size: calc(3.2 * var(--vw));
+  color: var(--text-dim);
+  text-align: center;
+  padding: calc(1.4 * var(--vh)) calc(6 * var(--vw));
+  border-radius: calc(2 * var(--vw));
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 calc(0.3 * var(--vw)) var(--panel-light);
+}
+
+/* 시작 화면 하단 크레딧 */
+.game-credit {
+  position: absolute;
+  bottom: calc(1.5 * var(--vh));
+  left: 0; right: 0;
+  text-align: center;
+  font-size: calc(2.6 * var(--vw));
+  color: var(--text-dim);
+  opacity: 0.7;
+  letter-spacing: 0.04em;
+}
+
 /* ===================== 버튼 ===================== */
 .btn {
   font-family: inherit; font-weight: 800; cursor: pointer;
@@ -94,6 +117,33 @@ html, body {
 }
 #btn-pause { margin-left: auto; }
 
+/* 배경음악 컨트롤 — 진화 순서와 일시정지 사이 */
+.bgm-volume {
+  -webkit-appearance: none; appearance: none;
+  width: calc(18 * var(--vw));
+  height: calc(0.8 * var(--vh));
+  background: var(--panel-light);
+  border-radius: calc(1 * var(--vw));
+  outline: none;
+  cursor: pointer;
+}
+.bgm-volume::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: calc(4 * var(--vw)); height: calc(4 * var(--vw));
+  border-radius: 50%;
+  background: var(--accent);
+  border: calc(0.3 * var(--vw)) solid var(--accent-deep);
+  cursor: pointer;
+}
+.bgm-volume::-moz-range-thumb {
+  width: calc(4 * var(--vw)); height: calc(4 * var(--vw));
+  border-radius: 50%;
+  background: var(--accent);
+  border: calc(0.3 * var(--vw)) solid var(--accent-deep);
+  cursor: pointer;
+}
+#btn-bgm-toggle.muted { opacity: 0.55; }
+
 #board-wrap {
   position: relative; flex: 1;
   margin: 0 calc(5 * var(--vw));                /* 좌우폭을 조금 줄임 */
@@ -106,13 +156,24 @@ html, body {
   touch-action: none;   /* 드래그 시 브라우저 스크롤/줌이 가로채지 않도록 */
 }
 
-/* 최소공배수 힌트 (치즈냥의 마법 분모) */
+/* 최소공배수 힌트 (치즈냥의 마법 분모)
+   ★ 수학 팝업(z-index 50) 위에 보여야 하므로 fixed + 더 높은 z-index */
 .lcm-hint {
-  position: absolute; top: calc(2 * var(--vh)); right: calc(3 * var(--vw));
+  position: fixed;
+  top: calc(3 * var(--vh));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 70;
   background: var(--accent); color: #2a1b4a;
-  font-weight: 900; font-size: calc(4 * var(--vw));
-  padding: calc(1 * var(--vh)) calc(3 * var(--vw)); border-radius: calc(2 * var(--vw));
-  box-shadow: 0 calc(0.5 * var(--vh)) calc(1.5 * var(--vh)) rgba(0,0,0,.5);
+  font-weight: 900; font-size: calc(4.4 * var(--vw));
+  padding: calc(1.2 * var(--vh)) calc(4 * var(--vw));
+  border-radius: calc(2 * var(--vw));
+  box-shadow: 0 calc(0.6 * var(--vh)) calc(1.8 * var(--vh)) rgba(0,0,0,.55);
+  animation: lcmPop 0.25s ease-out;
+}
+@keyframes lcmPop {
+  from { transform: translate(-50%, -1vh) scale(0.85); opacity: 0; }
+  to   { transform: translate(-50%, 0)    scale(1);    opacity: 1; }
 }
 
 /* 진화 순서 — 팝업 안의 그리드 (게임 화면을 가리지 않음) */

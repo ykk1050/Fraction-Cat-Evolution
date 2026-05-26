@@ -4,11 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#1b1033" />
-  <title>분수 고양이 진화 (Fraction Cat Evolution)</title>
+  <title>분수 고양이 게임 (Fraction Cat Evolution)</title>
   <!-- CSS 단위(--vw, --vh) 기본값. JS 가 #app 실제 크기 기준으로 덮어씀.
        이 덕분에 PC 가로 모니터에서도 800px 컨테이너 기준으로 정확히 스케일됨. -->
   <style>:root{--vw:1vw;--vh:1vh}</style>
-  <link rel="stylesheet" href="style.css?v=14" />
+  <link rel="stylesheet" href="style.css?v=20" />
 </head>
 <body>
   <div id="app">
@@ -16,13 +16,15 @@
     <!-- ===================== 시작 화면 ===================== -->
     <section id="screen-start" class="screen active">
       <div class="start-box">
-        <h1 class="game-title">분수 고양이<br />진화</h1>
+        <h1 class="game-title">분수 고양이<br />게임</h1>
         <p class="game-subtitle">고양이를 합쳐 분수 문제를 풀어요!</p>
         <button id="btn-resume-game" class="btn btn-primary btn-lg hidden">이어하기</button>
+        <p id="resume-empty" class="resume-empty hidden">이어할 게임이 없습니다.</p>
         <button id="btn-start" class="btn btn-primary btn-lg">새 게임 시작</button>
         <button id="btn-rank-start" class="btn btn-ghost">랭킹 보기</button>
         <button id="btn-help" class="btn btn-ghost">놀이 방법</button>
       </div>
+      <footer class="game-credit">Created by gamtudyssam using AI&nbsp;&nbsp;0.00011</footer>
     </section>
 
     <!-- ===================== 게임 화면 ===================== -->
@@ -54,6 +56,8 @@
         <span class="next-label">다음 고양이</span>
         <div id="next-cat" class="next-cat"></div>
         <button id="btn-cat-guide" class="btn btn-mini" aria-label="진화 순서 보기">📖 진화 순서</button>
+        <button id="btn-bgm-toggle" class="btn btn-mini" aria-label="배경음악 켜기/끄기">🔊</button>
+        <input id="bgm-volume" class="bgm-volume" type="range" min="0" max="100" value="40" aria-label="배경음악 볼륨" />
         <button id="btn-pause" class="btn btn-mini">일시정지</button>
       </div>
 
@@ -234,6 +238,7 @@
           <li>화면을 좌우로 움직여 고양이를 떨어뜨려요.</li>
           <li>같은 고양이끼리 만나면 진화해요. 1~2단계는 <b>자동으로</b> 합쳐져요.</li>
           <li>3단계부터는 <b>분수 문제</b>를 풀어야 한 단계 진화해요!</li>
+          <li>문제마다 <b>제한 시간</b>이 있어요. 시간이 0이 되면 진화 불가가 돼요.</li>
           <li>답은 꼭 <b>기약분수</b>로 입력해요.</li>
           <li>고양이가 빨간 선을 넘으면 게임이 끝나요.</li>
           <li>아이템을 사용해 어려운 순간을 넘겨요.</li>
@@ -251,8 +256,8 @@
 
   <!-- Matter.js 물리 엔진 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
-  <script src="math.js?v=14"></script>
-  <script src="gas.js?v=14"></script>
-  <script src="game.js?v=14"></script>
+  <script src="math.js?v=20"></script>
+  <script src="gas.js?v=20"></script>
+  <script src="game.js?v=20"></script>
 </body>
 </html>

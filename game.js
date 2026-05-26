@@ -68,7 +68,7 @@
     { id: 'lcm',    name: '치즈냥의 마법 분모', icon: '🧀', start: 0,
       desc: '문제의 두 분모의 최소공배수를 3초간 화면 구석에 보여줘요.' },
     { id: 'freeze', name: '생각 시간 멈춤', icon: '⏸️', start: 0,
-      desc: '문제를 푸는 동안 고양이들의 움직임을 멈춰줘요. 천천히 생각할 수 있어요.' },
+      desc: '풀이 카운트다운을 즉시 멈춰요. 시간 압박 없이 천천히 풀 수 있어요.' },
     { id: 'punch',  name: '꾹꾹이 펀치', icon: '🐾', start: 0,
       desc: '보드 위의 고양이 1마리를 골라서 없애요. 위급할 때 공간을 확보할 수 있어요.' },
     { id: 'mixer',  name: '야옹 믹서기', icon: '🌀', start: 0,
@@ -107,6 +107,7 @@
     playTime: 0,            // 누적 플레이 시간 (ms) — 일시정지/탭숨김/메뉴 시 정지
     clearTime: 0,           // 11단계(냥신) 첫 도달 시점의 playTime. 0=미달성
     lastActiveTickAt: 0,    // 마지막 활성 프레임 timestamp
+    problemTimeLeft: 0,     // 현재 분수 문제 남은 시간 (ms)
     rankSort: 'score',      // 랭킹 정렬 기준
     rankOrder: 'desc',      // 랭킹 정렬 방향 (desc/asc)
     dropLevel: 1,
@@ -148,6 +149,78 @@
       if (c >= DIFFICULTY_THRESHOLDS[d - 1]) return d;
     }
     return 1;
+  }
+
+  /* =====================  오디오  =====================
+     BGM(Sunny_Step_Up) 루프 + 효과음(drop, merge).
+     설정(켜짐 여부 + 볼륨)은 localStorage 에 영구 저장. */
+  const AUDIO_PREFS_KEY = 'fraction_cat_audio';
+  const audioPrefs = (() => {
+    try {
+      const o = JSON.parse(localStorage.getItem(AUDIO_PREFS_KEY) || '{}');
+      return {
+        enabled: o.enabled !== false,
+        volume: typeof o.volume === 'number' ? Math.min(1, Math.max(0, o.volume)) : 0.4,
+      };
+    } catch (e) { return { enabled: true, volume: 0.4 }; }
+  })();
+  function saveAudioPrefs() {
+    try { localStorage.setItem(AUDIO_PREFS_KEY, JSON.stringify(audioPrefs)); }
+    catch (e) {}
+  }
+
+  const bgm = new Audio('Sunny_Step_Up.mp3');
+  bgm.loop = true;
+  bgm.volume = audioPrefs.volume;
+  const sfxTemplates = {
+    drop:  new Audio('drop.mp3'),
+    merge: new Audio('merge.mp3'),
+  };
+  sfxTemplates.drop.preload = 'auto';
+  sfxTemplates.merge.preload = 'auto';
+
+  let lastDropSoundAt = 0;
+  function playSFX(name, opts) {
+    if (!audioPrefs.enabled) return;
+    const tpl = sfxTemplates[name];
+    if (!tpl) return;
+    if (name === 'drop') {
+      const now = performance.now();
+      if (now - lastDropSoundAt < 80) return;   // 너무 잦은 충돌은 합침
+      lastDropSoundAt = now;
+    }
+    try {
+      const a = tpl.cloneNode();
+      a.volume = (opts && typeof opts.volume === 'number') ? opts.volume : 0.6;
+      a.play().catch(() => {});
+    } catch (e) {}
+  }
+
+  function tryStartBGM() {
+    if (!audioPrefs.enabled) return;
+    bgm.volume = audioPrefs.volume;
+    const p = bgm.play();
+    if (p && p.catch) p.catch(() => {});   // 자동재생 차단되면 조용히 무시
+  }
+  function stopBGM() { bgm.pause(); }
+  function setAudioEnabled(on) {
+    audioPrefs.enabled = !!on;
+    saveAudioPrefs();
+    if (on) tryStartBGM(); else stopBGM();
+    syncBGMButton();
+  }
+  function setBGMVolume(v) {
+    audioPrefs.volume = Math.min(1, Math.max(0, v));
+    bgm.volume = audioPrefs.volume;
+    saveAudioPrefs();
+  }
+  function syncBGMButton() {
+    const btn = document.getElementById('btn-bgm-toggle');
+    if (!btn) return;
+    btn.textContent = audioPrefs.enabled ? '🔊' : '🔇';
+    btn.classList.toggle('muted', !audioPrefs.enabled);
+    const slider = document.getElementById('bgm-volume');
+    if (slider) slider.value = Math.round(audioPrefs.volume * 100);
   }
 
   /* =====================  유틸  ===================== */
@@ -240,6 +313,14 @@
     if (state.problemActive || !state.running || state.paused) return;
     if (state.choosingReward) return;   // 보상 선택 중에는 새 충돌 처리 안 함
     const now = performance.now();
+    // drop 효과음 — 고양이가 무언가에 부딪힐 때 (속도 1.5 이상)
+    for (const pair of evt.pairs) {
+      const a = pair.bodyA, b = pair.bodyB;
+      if (a.label !== 'cat' && b.label !== 'cat') continue;
+      const sa = Math.hypot(a.velocity?.x || 0, a.velocity?.y || 0);
+      const sb = Math.hypot(b.velocity?.x || 0, b.velocity?.y || 0);
+      if (Math.max(sa, sb) > 1.5) { playSFX('drop'); break; }
+    }
     for (const pair of evt.pairs) {
       const a = pair.bodyA, b = pair.bodyB;
       if (a.label !== 'cat' || b.label !== 'cat') continue;
@@ -273,6 +354,7 @@
     Composite.remove(world, b);
     makeCat(newLevel, mid.x, mid.y);
     state.score += 10 * newLevel;   // 작은 보너스 (문제 풀이 점수보다 훨씬 적음)
+    playSFX('merge');
     updateHUD();
   }
 
@@ -284,6 +366,7 @@
     Composite.remove(world, b);
     state.score += 2000;
     showComboFlash('대성공!');
+    playSFX('merge', { volume: 0.9 });
     toast(CAT_NAMES[MAX_LEVEL] + '끼리 만나 별이 되었어요! +2000', 2000);
     updateHUD();
   }
@@ -301,6 +384,8 @@
     a.merging = b.merging = true;
     state.freezeProblem = false;
     state.currentProblem = generateProblem(Math.min(10, currentRound()));
+    // 제한 시간: 난이도가 올라갈수록 더 줌 (45s 기본 + 난이도×3s)
+    state.problemTimeLeft = (45 + state.currentProblem.difficulty * 3) * 1000;
     openMathPopup();
   }
 
@@ -312,6 +397,7 @@
     Composite.remove(world, a);
     Composite.remove(world, b);
     makeCat(newLevel, mid.x, mid.y);
+    playSFX('merge', { volume: 0.75 });
 
     state.correctCount++;
     state.totalCount++;
@@ -333,6 +419,13 @@
     closeProblem();
     updateHUD();
     if (willReward) setTimeout(openRewardChooser, 400);
+  }
+
+  /* 시간 초과 = 오답 처리 (두 고양이 진화 불가) */
+  function handleProblemTimeout() {
+    if (!state.problemActive) return;
+    toast('시간 초과! 이 고양이는 더 진화할 수 없어요.', 2200);
+    resolveWrong();
   }
 
   /* 오답 처리 → 두 고양이가 '진화 불가' 상태가 되고 팝업이 닫힘 */
@@ -358,15 +451,21 @@
     state.currentPair = null;
     state.currentProblem = null;
     state.freezeProblem = false;
+    state.problemTimeLeft = 0;
     $('math-popup').classList.add('hidden');
     $('lcm-hint').classList.add('hidden');
+    const ti = $('math-timer');
+    if (ti) ti.style.color = '';     // 빨간색 잔재 제거
   }
 
   /* =====================  수학 문제 팝업  ===================== */
   function openMathPopup() {
     const p = state.currentProblem;
-    $('math-tag').textContent = p.op === '+' ? '분수의 덧셈' : '분수의 뺄셈';
-    $('math-timer').textContent = '난이도 ' + p.difficulty + '단계';
+    $('math-tag').textContent = '분수의 ' + (p.op === '+' ? '덧셈' : '뺄셈')
+      + ' · 난이도 ' + p.difficulty;
+    const ti = $('math-timer');
+    ti.textContent = Math.ceil(state.problemTimeLeft / 1000) + '초';
+    ti.style.color = '';
     $('math-question').innerHTML = problemHTML(p);
     state.ans = { whole: '', numer: '', denom: '' };
     state.activeField = 'numer';
@@ -474,11 +573,17 @@
       );
       if (target) {
         Composite.remove(world, target);
+        // 선택 성공 시점에만 펀치 아이템 1개 차감
+        if ((state.items.punch || 0) > 0) {
+          state.items.punch--;
+          updateItemBar();
+        }
         toast(CAT_NAMES[target.catLevel] + ' 을(를) 없앴어요!');
+        state.selectMode = false;
       } else {
-        toast('고양이를 정확히 눌러주세요.');
+        // 빗맞히면 아이템 그대로, 선택 모드도 유지 → 다시 시도 가능
+        toast('고양이를 정확히 눌러주세요. (선택 취소: 일시정지)');
       }
-      state.selectMode = false;
       return;
     }
     // 보드 위에서 시작한 터치만 드롭으로 인정 (아이템 버튼 탭 등은 제외)
@@ -510,18 +615,24 @@
     const bar = $('item-bar');
     bar.innerHTML = '';
     ITEM_DEFS.forEach((def) => {
-      state.items[def.id] = def.start;
+      if (state.items[def.id] === undefined) state.items[def.id] = 0;
+      const cnt = state.items[def.id] || 0;
       const btn = document.createElement('button');
       btn.className = 'item-btn';
       btn.id = 'item-' + def.id;
       btn.innerHTML =
         `<span class="item-icon">${def.icon}</span>` +
         `<span class="item-name">${def.name}</span>` +
-        `<span class="item-count" id="count-${def.id}">${def.start}</span>`;
+        `<span class="item-count" id="count-${def.id}">${cnt}</span>`;
       btn.addEventListener('click', () => openItemInfo(def));
       bar.appendChild(btn);
     });
     updateItemBar();
+  }
+
+  // 아이템 개수 초기 세팅 (새 게임 시작 시에만)
+  function resetItemCounts() {
+    ITEM_DEFS.forEach((def) => { state.items[def.id] = def.start; });
   }
 
   // 문제 풀이 중에 쓸 수 있는 미니 아이템 3개를 수학 팝업 안에 표시
@@ -643,19 +754,21 @@
     return true;
   }
 
-  // 2. 생각 시간 멈춤 — 문제 동안 물리 정지
+  // 2. 생각 시간 멈춤 — 카운트다운과 물리를 함께 정지
   function itemFreeze() {
     state.freezeProblem = true;
-    toast('고양이들이 잠시 멈췄어요!');
+    toast('시간이 멈췄어요! 천천히 풀어도 돼요.');
     return true;
   }
 
   // 3. 꾹꾹이 펀치 — 고양이 1마리 선택 제거
+  //    선택 모드로 들어가기만 하고 실제 차감은 onPointerDown 에서 처리
+  //    (잘못 누르거나 빈 곳을 누르면 아이템이 그대로 남도록)
   function itemPunch() {
     if (getCats().length === 0) { toast('없앨 고양이가 없어요.'); return false; }
     state.selectMode = true;
     toast('없앨 고양이를 한 번 눌러주세요.');
-    return true;
+    return false;   // ★ 차감하지 않음 — 선택 성공 시점에 별도 차감
   }
 
   // 4. 야옹 믹서기 — 흔들기 + 위치 섞기
@@ -674,6 +787,8 @@
       Body.setVelocity(c, { x: (Math.random() - 0.5) * 8, y: 0 });
       Body.setAngularVelocity(c, (Math.random() - 0.5) * 0.4);
     });
+    // 셔플 직후 우연한 충돌이 곧장 문제 팝업으로 이어지지 않도록 유예 시간 부여
+    state.resumeGraceUntil = performance.now() + 1500;
     toast('고양이들이 뒤죽박죽 섞였어요!');
     return true;
   }
@@ -731,6 +846,8 @@
     const acc = state.totalCount
       ? Math.round((state.correctCount / state.totalCount) * 100) : 0;
     $('hud-accuracy').textContent = acc + '%';
+    const ht = $('hud-time');
+    if (ht) ht.textContent = formatTime(state.playTime);
   }
 
   function updateNextPreview() {
@@ -868,17 +985,38 @@
     const isActive = !state.paused && !state.choosingReward && visible && onGame;
 
     // 플레이 타임 누적 (활성일 때만)
+    let dt = 0;
     if (isActive) {
       if (state.lastActiveTickAt) {
-        const dt = ts - state.lastActiveTickAt;
-        if (dt > 0 && dt < 500) state.playTime += dt;  // 큰 갭은 무시 (안전망)
+        const raw = ts - state.lastActiveTickAt;
+        if (raw > 0 && raw < 500) dt = raw;       // 큰 갭은 무시 (안전망)
       }
+      state.playTime += dt;
       state.lastActiveTickAt = ts;
       // HUD 업데이트 (가벼움)
       const hudTime = $('hud-time');
       if (hudTime) hudTime.textContent = formatTime(state.playTime);
     } else {
       state.lastActiveTickAt = 0;
+    }
+
+    // 분수 문제 카운트다운
+    if (state.problemActive) {
+      const ti = $('math-timer');
+      if (state.freezeProblem) {
+        if (ti) { ti.textContent = '⏸️ 시간 멈춤'; ti.style.color = 'var(--accent)'; }
+      } else if (dt > 0) {
+        state.problemTimeLeft -= dt;
+        if (state.problemTimeLeft <= 0) {
+          state.problemTimeLeft = 0;
+          if (ti) ti.textContent = '0초';
+          handleProblemTimeout();
+        } else if (ti) {
+          const sec = Math.ceil(state.problemTimeLeft / 1000);
+          ti.textContent = sec + '초';
+          ti.style.color = sec <= 10 ? '#ff5c5c' : '';
+        }
+      }
     }
 
     // 엔진 동결 조건 (수학 팝업 중에도 기본은 엔진 작동 — 기존 로직 유지)
@@ -939,7 +1077,10 @@
 
   function updateResumeButton() {
     const btn = document.getElementById('btn-resume-game');
-    if (btn) btn.classList.toggle('hidden', !hasSavedGame());
+    const empty = document.getElementById('resume-empty');
+    const has = hasSavedGame();
+    if (btn) btn.classList.toggle('hidden', !has);
+    if (empty) empty.classList.toggle('hidden', has);
   }
 
   function resumeGame() {
@@ -987,7 +1128,7 @@
       body.bornAt = performance.now() - 3000;  // 이미 안정화된 것으로
     }
 
-    updateItemBar();
+    buildItemBar();        // DOM 생성 (state.items 는 보존)
     updateHUD();
     updateNextPreview();
     return true;
@@ -1040,6 +1181,7 @@
     state.resumeGraceUntil = 0;
     state.itemInfoItem = null;
 
+    resetItemCounts();      // 새 게임은 모든 아이템 0개로 초기화
     buildItemBar();
     updateHUD();
     updateNextPreview();
@@ -1049,6 +1191,7 @@
     state.running = false;
     state.problemActive = false;
     clearSavedGame();           // 게임 종료 시 저장본 삭제
+    stopBGM();
     hideAllOverlays();
 
     const acc = state.totalCount
@@ -1196,9 +1339,10 @@
       clearSavedGame();           // 새 게임 시작 시 저장본 삭제
       startGame();
       updateResumeButton();
+      tryStartBGM();
     });
     $('btn-resume-game').addEventListener('click', () => {
-      if (resumeGame()) updateResumeButton();
+      if (resumeGame()) { updateResumeButton(); tryStartBGM(); }
     });
     $('btn-rank-start').addEventListener('click', () => openRank(null));
     $('btn-help').addEventListener('click', () => {
@@ -1263,15 +1407,28 @@
       $('cat-guide-popup').classList.add('hidden');
     });
 
+    // 배경음악 토글 / 볼륨
+    $('btn-bgm-toggle').addEventListener('click', () => {
+      setAudioEnabled(!audioPrefs.enabled);
+    });
+    $('bgm-volume').addEventListener('input', (e) => {
+      setBGMVolume(Number(e.target.value) / 100);
+      if (audioPrefs.enabled && bgm.paused) tryStartBGM();
+    });
+    syncBGMButton();
+
     // 일시정지
     $('btn-pause').addEventListener('click', () => {
       if (!state.running) return;
+      state.selectMode = false;       // 펀치 선택 모드 중이면 취소
       state.paused = true;
       $('pause-popup').classList.remove('hidden');
+      stopBGM();
     });
     $('btn-resume').addEventListener('click', () => {
       state.paused = false;
       $('pause-popup').classList.add('hidden');
+      tryStartBGM();
     });
     // 다시 시작 = 저장본 삭제 후 새 게임 (아래 별도 listener 가 startGame 호출)
     $('btn-quit').addEventListener('click', () => {
@@ -1281,6 +1438,7 @@
       hideAllOverlays();
       showScreen('start');
       updateResumeButton();
+      stopBGM();
     });
     $('btn-restart').addEventListener('click', () => {
       clearSavedGame();
@@ -1368,6 +1526,12 @@
     // 탭이 다시 보일 때 시간 기준 리셋 (큰 갭 방지)
     document.addEventListener('visibilitychange', function () {
       state.lastActiveTickAt = 0;
+      // 탭이 숨겨지면 BGM 정지, 다시 보이면 (게임 진행 중일 때만) 재개
+      if (document.visibilityState === 'visible') {
+        if (state.running && !state.paused) tryStartBGM();
+      } else {
+        stopBGM();
+      }
     });
     requestAnimationFrame(loop);
   }
