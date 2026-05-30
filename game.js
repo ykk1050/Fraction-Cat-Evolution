@@ -112,6 +112,7 @@
     rankOrder: 'desc',      // 랭킹 정렬 방향 (desc/asc)
     dropLevel: 1,
     nextLevel: 1,
+    upcomingQueue: [],      // 앞으로 나올 고양이 단계들 (queue[0]=현재, queue[1]=다음, ...)
     pendingX: 180,
     dropLocked: false,
     problemActive: false,
@@ -127,6 +128,12 @@
     itemInfoItem: null,     // 현재 정보 팝업에 띄워둔 아이템 def
     choosingReward: false,  // 5연속 정답 보상 선택 중 (게임 일시정지)
     resumeGraceUntil: 0,    // 이 시각까지는 새 문제 충돌을 막음 (보상 후 안정화)
+    needsMergeCheck: false, // 유예 중 스킵된 쌍이 있을 때 만료 직후 재검사 트리거
+    mergeCheckUntil: 0,     // 합체 직후 일정 시간 동안 매 프레임 인접 쌍 안전 검사
+    feedbackShown: false,   // 정답/오답 피드백을 보여주는 동안 입력·엔진 정지
+    mergeShowUntil: 0,      // 정답 후 합쳐진 모습을 보여주는 동안 엔진 정지
+    pendingResolution: null,// '확인' 버튼 누르면 처리할 결과: 'correct' | 'wrong'
+    seenCats: {},           // 이 기기에서 만들어본 적 있는 단계 (4~11). 1~3은 항상 보임
   };
 
   /* 누적 정답수 → 현재 난이도 (1~10).
@@ -223,6 +230,31 @@
     if (slider) slider.value = Math.round(audioPrefs.volume * 100);
   }
 
+  /* =====================  진화 도감 (seenCats)  =====================
+     이 기기에서 만들어본 적 있는 단계만 진화 순서 화면에서 그림으로 표시.
+     1~3 단계는 자동 진화 단계라 늘 보이고, 4~11 단계는 만든 적 있을 때만. */
+  const SEEN_CATS_KEY = 'fraction_cat_seen';
+  function loadSeenCats() {
+    try {
+      const o = JSON.parse(localStorage.getItem(SEEN_CATS_KEY) || '{}');
+      // 1~3 은 늘 보이도록 기본값 주입
+      o[1] = o[2] = o[3] = true;
+      return o;
+    } catch (e) { return { 1: true, 2: true, 3: true }; }
+  }
+  function saveSeenCats() {
+    try { localStorage.setItem(SEEN_CATS_KEY, JSON.stringify(state.seenCats)); }
+    catch (e) {}
+  }
+  // 누적 마킹 — 11 을 만들었으면 4~11 까지 전부 보임 (도달 과정에서 모두 만들었기 때문)
+  function markCatSeen(level) {
+    let changed = false;
+    for (let lv = 4; lv <= level; lv++) {
+      if (!state.seenCats[lv]) { state.seenCats[lv] = true; changed = true; }
+    }
+    if (changed) saveSeenCats();
+  }
+
   /* =====================  유틸  ===================== */
   function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
@@ -233,6 +265,24 @@
   function randomDropLevel() {
     const r = Math.random();
     return r < 0.6 ? 1 : r < 0.9 ? 2 : 3;
+  }
+  const UPCOMING_QUEUE_LEN = 8;       // 미리 뽑아두는 큐 길이 (드롭다운에 5마리 + 여유)
+  function initUpcomingQueue() {
+    state.upcomingQueue = [];
+    for (let i = 0; i < UPCOMING_QUEUE_LEN; i++) {
+      state.upcomingQueue.push(randomDropLevel());
+    }
+    state.dropLevel = state.upcomingQueue[0];
+    state.nextLevel = state.upcomingQueue[1];
+  }
+  function advanceUpcomingQueue() {
+    state.upcomingQueue.shift();
+    state.upcomingQueue.push(randomDropLevel());
+    while (state.upcomingQueue.length < UPCOMING_QUEUE_LEN) {
+      state.upcomingQueue.push(randomDropLevel());
+    }
+    state.dropLevel = state.upcomingQueue[0];
+    state.nextLevel = state.upcomingQueue[1];
   }
   function getCats() {
     return Composite.allBodies(world).filter((b) => b.label === 'cat');
@@ -300,6 +350,7 @@
     body.overSince = 0;
     body.dead = false;        // 오답으로 진화 불가가 된 고양이
     if (level > state.maxCatLevel) state.maxCatLevel = level;
+    markCatSeen(level);       // 도감에 등록 (4단계 이상만 실제 누적)
     // 11단계(냥신) 첫 도달 시점의 플레이 타임 기록 — '빠른 클리어' 랭킹용
     if (level >= MAX_LEVEL && state.clearTime === 0) {
       state.clearTime = Math.max(1, state.playTime);
@@ -337,11 +388,41 @@
         autoMerge(a, b);          // 1~3단계: 문제 없이 자동 진화
         continue;
       }
-      // 보상 직후 유예 시간 동안에는 새 문제를 띄우지 않음
-      // (보상 모달 때문에 멈춰있던 충돌이 한꺼번에 발화되는 것을 방지)
-      if (now < state.resumeGraceUntil) continue;
+      // 보상 직후 유예 시간 동안에는 새 문제를 띄우지 않음.
+      // Matter 의 collisionStart 는 접촉 시작 시점에 1회만 발생하므로,
+      // 여기서 스킵된 쌍은 유예가 끝나도 다시 이벤트가 안 옴 → 영영 안 합쳐지는 버그.
+      // 만료 직후 1회 재검사를 트리거하기 위해 플래그를 세움.
+      if (now < state.resumeGraceUntil) { state.needsMergeCheck = true; continue; }
       startProblem(a, b);         // 4단계 이상: 분수 문제로 진화
       break;                      // 문제 팝업은 한 번에 하나만
+    }
+  }
+
+  /* 합체 직후·유예 만료 후 안전망 — Matter.collisionStart 가 놓친 인접 쌍을 직접 처리.
+     · Matter 는 두 원이 정확히 닿아야 collisionStart 가 발화하므로 1~2 픽셀 갭에는 안 잡힘
+     · 합체 직후엔 새 고양이가 옆 고양이와 미세하게 떨어진 채 멈출 수 있음
+     · 그래서 약간 너그러운 거리(3px)로 검사하고, 합체 후 일정 시간 동안 반복 실행. */
+  function checkForPendingMerges() {
+    if (state.problemActive || state.choosingReward) return;
+    if (performance.now() < state.resumeGraceUntil) return;   // 유예 중엔 안 함
+    const cats = getCats();
+    const now = performance.now();
+    for (let i = 0; i < cats.length; i++) {
+      const a = cats[i];
+      if (a.merging || a.dead || now < a.cooldownUntil) continue;
+      for (let j = i + 1; j < cats.length; j++) {
+        const b = cats[j];
+        if (b.merging || b.dead || now < b.cooldownUntil) continue;
+        if (a.catLevel !== b.catLevel) continue;
+        const dx = a.position.x - b.position.x;
+        const dy = a.position.y - b.position.y;
+        const sumR = a.circleRadius + b.circleRadius;
+        if (Math.hypot(dx, dy) > sumR + 3) continue;     // 거의 닿은 쌍 포함
+        if (a.catLevel >= MAX_LEVEL) { maxMerge(a, b); return; }
+        if (a.catLevel < PROBLEM_MIN_LEVEL) { autoMerge(a, b); return; }
+        startProblem(a, b);
+        return;     // 한 번에 한 쌍만 처리 (문제는 동시 진행 불가)
+      }
     }
   }
 
@@ -355,6 +436,7 @@
     makeCat(newLevel, mid.x, mid.y);
     state.score += 10 * newLevel;   // 작은 보너스 (문제 풀이 점수보다 훨씬 적음)
     playSFX('merge');
+    state.mergeCheckUntil = performance.now() + 2500;   // 안전망 활성
     updateHUD();
   }
 
@@ -368,6 +450,7 @@
     showComboFlash('대성공!');
     playSFX('merge', { volume: 0.9 });
     toast(CAT_NAMES[MAX_LEVEL] + '끼리 만나 별이 되었어요! +2000', 2000);
+    state.mergeCheckUntil = performance.now() + 2500;
     updateHUD();
   }
 
@@ -417,8 +500,12 @@
     const willReward = state.combo > 0 && state.combo % 5 === 0;
     if (willReward) state.choosingReward = true;
     closeProblem();
+    // 합쳐진 모습을 1초간 보여줌 — 그 동안 엔진 정지, 새 문제 팝업도 못 끼어듦
+    state.mergeShowUntil = performance.now() + 1000;
+    // 합체 직후 약 2.5초간 인접 쌍 안전 검사 활성 (Matter 가 놓친 미세 갭 보완)
+    state.mergeCheckUntil = performance.now() + 2500;
     updateHUD();
-    if (willReward) setTimeout(openRewardChooser, 400);
+    if (willReward) setTimeout(openRewardChooser, 1000);
   }
 
   /* 시간 초과 = 오답 처리 (두 고양이 진화 불가) */
@@ -438,6 +525,8 @@
       });
     }
     closeProblem();
+    // 팝업이 닫힌 후 게임 화면 위에서 안내 — 사용자가 진짜로 보게 됨
+    toast('이 고양이들은 더 이상 진화할 수 없어요!', 2500);
     updateHUD();
   }
 
@@ -467,6 +556,10 @@
     ti.textContent = Math.ceil(state.problemTimeLeft / 1000) + '초';
     ti.style.color = '';
     $('math-question').innerHTML = problemHTML(p);
+    // 새 문제 — 결과 대기 상태와 확인 버튼 초기화
+    state.pendingResolution = null;
+    $('btn-math-submit').textContent = '정답 확인';
+    setFeedbackMode(false);
     state.ans = { whole: '', numer: '', denom: '' };
     state.activeField = 'numer';
     refreshAnswerFields();
@@ -517,39 +610,75 @@
 
   function submitMath() {
     if (!state.problemActive) return;
+
+    // 두 번째 단계: 피드백 표시 중에 '확인' 버튼 → 결과를 실제로 적용
+    if (state.pendingResolution) {
+      const pending = state.pendingResolution;
+      state.pendingResolution = null;
+      setFeedbackMode(false);
+      $('btn-math-submit').textContent = '정답 확인';
+      if (pending === 'correct') resolveCorrect();
+      else if (pending === 'wrong') resolveWrong();
+      return;
+    }
+
+    // 첫 단계: 채점
     const a = state.ans;
     const res = checkAnswer(a.whole, a.numer, a.denom, state.currentProblem);
     const fb = $('math-feedback');
 
     if (res.status === 'correct') {
-      fb.textContent = res.message;
+      fb.innerHTML = '정답이에요!';
       fb.className = 'math-feedback good';
-      resolveCorrect();
+      armConfirm('correct');
     } else if (res.status === 'not_reduced') {
       fb.textContent = res.message;
       fb.className = 'math-feedback bad';
-      toast('기약분수로 입력해주세요!', 1800); // 요구된 한국어 알림
+      toast('기약분수로 입력해주세요!', 1800);
+    } else if (res.status === 'improper_form') {
+      fb.textContent = res.message;
+      fb.className = 'math-feedback bad';
+      toast(res.message, 1800);
     } else if (res.status === 'wrong') {
-      toast('아쉬워요! 이 고양이는 더 진화할 수 없어요.', 2200);
-      resolveWrong();
+      fb.innerHTML = '오답이에요! 정답은 '
+        + mixedFractionHTML(state.currentProblem.answer)
+        + ' 이에요.';
+      fb.className = 'math-feedback bad';
+      armConfirm('wrong');
     } else {
       fb.textContent = res.message;
       fb.className = 'math-feedback bad';
     }
   }
 
+  /* 결과를 보여주는 단계로 진입 — 제출 버튼이 '확인' 으로 바뀌고,
+     키패드·아이템은 잠금. 엔진·카운트다운도 정지. */
+  function armConfirm(result) {
+    state.pendingResolution = result;
+    setFeedbackMode(true);
+    $('btn-math-submit').textContent = '확인';
+  }
+
+  /* 피드백 표시 모드 — 제출 버튼(확인)은 살리고 나머지 입력 잠금 */
+  function setFeedbackMode(on) {
+    state.feedbackShown = !!on;
+    document.querySelectorAll('#math-items .math-item-btn').forEach((b) => { b.disabled = !!on; });
+    document.querySelectorAll('#keypad .key').forEach((b) => { b.disabled = !!on; });
+    document.querySelectorAll('.ans-field').forEach((b) => { b.disabled = !!on; });
+  }
+
   /* =====================  드롭 조작  ===================== */
   function dropCat() {
     if (!state.running || state.paused || state.problemActive) return;
     if (state.dropLocked || state.selectMode) return;
+    if (state.mergeShowUntil > performance.now()) return;   // 합쳐진 모습 보는 중
 
     const lv = state.dropLevel;
     const r = catRadius(lv);
     const x = clamp(state.pendingX, r, BOARD_W - r);
     makeCat(lv, x, DROP_Y);
 
-    state.dropLevel = state.nextLevel;
-    state.nextLevel = randomDropLevel();   // 다음 고양이는 무작위 1~3단계
+    advanceUpcomingQueue();             // 큐를 한 칸 앞으로 + 새 고양이 추가
     state.dropLocked = true;
     setTimeout(() => { state.dropLocked = false; }, 480);
     updateNextPreview();
@@ -819,6 +948,7 @@
         const chosen = lv;
         b.addEventListener('click', () => {
           state.dropLevel = chosen;
+          state.upcomingQueue[0] = chosen;     // 큐의 첫 칸도 갱신
           ov.classList.add('hidden');
           updateNextPreview();
           toast(CAT_NAMES[chosen] + ' 을(를) 준비했어요!');
@@ -829,12 +959,12 @@
     ov.classList.remove('hidden');
   }
 
-  // 6. 츄르 타임 — 문제를 정답 처리
+  // 6. 츄르 타임 — 문제를 정답 처리 (확인 버튼 누르면 진행)
   function itemChuru() {
-    toast('츄르 타임! 문제를 통과했어요.');
-    $('math-feedback').textContent = '츄르 타임으로 통과!';
-    $('math-feedback').className = 'math-feedback good';
-    resolveCorrect();
+    const fb = $('math-feedback');
+    fb.innerHTML = '츄르 타임! 정답으로 통과!';
+    fb.className = 'math-feedback good';
+    armConfirm('correct');
     return true;
   }
 
@@ -854,9 +984,43 @@
     const el = $('next-cat');
     el.style.backgroundImage = `url('${CAT_ASSETS[state.nextLevel]}')`;
     el.style.backgroundColor = CAT_COLORS[state.nextLevel];
+    // 드롭다운이 열려 있으면 갱신된 큐로 다시 그림
+    if (!$('upcoming-popup').classList.contains('hidden')) buildUpcomingList();
   }
 
-  /* 보드 우하단 — 1~11단계 진화 순서 미리보기 (최소화 기본) */
+  /* 다음 고양이 드롭다운 — queue[1] 부터 5마리 표시 (queue[0]은 캔버스 상단의 현재 대기 고양이) */
+  function buildUpcomingList() {
+    const list = $('upcoming-list');
+    list.innerHTML = '';
+    const labels = ['1번째', '2번째', '3번째', '4번째', '5번째'];
+    for (let i = 0; i < 5; i++) {
+      const lv = state.upcomingQueue[i + 1];
+      if (!lv) continue;
+      const item = document.createElement('div');
+      item.className = 'up-item';
+      const cat = document.createElement('span');
+      cat.className = 'up-cat';
+      cat.style.backgroundImage = "url('" + CAT_ASSETS[lv] + "')";
+      cat.style.backgroundColor = CAT_COLORS[lv];
+      const label = document.createElement('span');
+      label.className = 'up-label';
+      label.textContent = labels[i];
+      item.appendChild(cat);
+      item.appendChild(label);
+      list.appendChild(item);
+    }
+  }
+  function toggleUpcomingPopup() {
+    const pop = $('upcoming-popup');
+    if (pop.classList.contains('hidden')) {
+      buildUpcomingList();
+      pop.classList.remove('hidden');
+    } else {
+      pop.classList.add('hidden');
+    }
+  }
+
+  /* 진화 순서 도감 — 만들어본 단계만 그림으로, 안 만든 단계는 ? 실루엣 */
   function buildCatGuide() {
     const grid = $('cat-guide-grid');
     grid.innerHTML = '';
@@ -864,10 +1028,26 @@
       const cell = document.createElement('div');
       cell.className = 'cat-guide-item';
       const asset = CAT_ASSETS[lv];
-      if (asset) {
-        cell.style.backgroundImage = "url('" + asset.replace('_512', '_128') + "')";
+      const seen = !!state.seenCats[lv];
+      if (seen) {
+        if (asset) {
+          cell.style.backgroundImage = "url('" + asset.replace('_512', '_128') + "')";
+        } else {
+          cell.style.backgroundColor = CAT_COLORS[lv];   // 11단계: 이미지 대체
+        }
       } else {
-        cell.style.backgroundColor = CAT_COLORS[lv];   // 11단계: 이미지 대체
+        cell.classList.add('cg-unseen');
+        if (asset) {
+          const sil = document.createElement('div');
+          sil.className = 'cg-sil';
+          sil.style.backgroundImage =
+            "url('" + asset.replace('_512', '_128') + "')";
+          cell.appendChild(sil);
+        }
+        const q = document.createElement('span');
+        q.className = 'cg-q';
+        q.textContent = '?';
+        cell.appendChild(q);
       }
       const num = document.createElement('span');
       num.className = 'cg-num';
@@ -1005,6 +1185,8 @@
       const ti = $('math-timer');
       if (state.freezeProblem) {
         if (ti) { ti.textContent = '⏸️ 시간 멈춤'; ti.style.color = 'var(--accent)'; }
+      } else if (state.feedbackShown) {
+        // 정답/오답 피드백 표시 중에는 카운트다운 정지 (디스플레이도 그대로 유지)
       } else if (dt > 0) {
         state.problemTimeLeft -= dt;
         if (state.problemTimeLeft <= 0) {
@@ -1019,13 +1201,26 @@
       }
     }
 
-    // 엔진 동결 조건 (수학 팝업 중에도 기본은 엔진 작동 — 기존 로직 유지)
+    // 엔진 동결 조건
+    //   · 정답/오답 피드백 표시 중에는 엔진을 멈춰 게임오버 위험을 차단
+    //   · 정답 처리 직후엔 합쳐진 모습을 보여주기 위해 mergeShowUntil 동안 정지
     const engineFrozen = state.paused ||
       (state.problemActive && state.freezeProblem) ||
-      state.choosingReward || !visible || !onGame;
+      state.choosingReward || !visible || !onGame ||
+      state.feedbackShown ||
+      state.mergeShowUntil > performance.now();
     if (!engineFrozen) {
       Engine.update(engine, 1000 / 60);
       checkGameOver();
+      // 안전망: 합체 직후 일정 시간 동안 OR 유예 만료 직후
+      //         인접한 같은 단계 쌍을 매 프레임 직접 스캔.
+      const tnow = performance.now();
+      const inMergeWindow = tnow < state.mergeCheckUntil;
+      const graceExpired = tnow >= state.resumeGraceUntil;
+      if (graceExpired && (inMergeWindow || state.needsMergeCheck)) {
+        state.needsMergeCheck = false;
+        checkForPendingMerges();
+      }
     }
     render();
   }
@@ -1060,6 +1255,7 @@
         playTime: state.playTime, clearTime: state.clearTime,
         items: state.items,
         dropLevel: state.dropLevel, nextLevel: state.nextLevel,
+        upcomingQueue: state.upcomingQueue.slice(),
         cats: cats,
         savedAt: Date.now(),
       };
@@ -1102,9 +1298,23 @@
     state.maxCatLevel = snap.maxCatLevel || 0;
     state.playTime = snap.playTime || 0;
     state.clearTime = snap.clearTime || 0;
+    markCatSeen(state.maxCatLevel);    // 이어하기 시 최고 단계까지 도감에 누적 반영
     state.items = Object.assign({}, snap.items || {});
-    state.dropLevel = snap.dropLevel || 1;
-    state.nextLevel = snap.nextLevel || 1;
+    // 큐 복원 — 옛 저장본이면 dropLevel/nextLevel 로부터 새 큐 생성
+    if (Array.isArray(snap.upcomingQueue) && snap.upcomingQueue.length >= 2) {
+      state.upcomingQueue = snap.upcomingQueue.slice();
+      while (state.upcomingQueue.length < UPCOMING_QUEUE_LEN) {
+        state.upcomingQueue.push(randomDropLevel());
+      }
+      state.dropLevel = state.upcomingQueue[0];
+      state.nextLevel = state.upcomingQueue[1];
+    } else {
+      initUpcomingQueue();
+      state.upcomingQueue[0] = snap.dropLevel || state.upcomingQueue[0];
+      state.upcomingQueue[1] = snap.nextLevel || state.upcomingQueue[1];
+      state.dropLevel = state.upcomingQueue[0];
+      state.nextLevel = state.upcomingQueue[1];
+    }
     state.pendingX = BOARD_W / 2;
     state.dropLocked = false;
     state.dragging = false;
@@ -1114,6 +1324,11 @@
     state.scoreSubmitted = false;
     state.choosingReward = false;
     state.resumeGraceUntil = performance.now() + 800;
+    state.needsMergeCheck = false;
+    state.mergeCheckUntil = 0;
+    state.feedbackShown = false;
+    state.mergeShowUntil = 0;
+    state.pendingResolution = null;
     state.itemInfoItem = null;
     state.lastActiveTickAt = 0;
 
@@ -1168,8 +1383,7 @@
     state.playTime = 0;
     state.clearTime = 0;
     state.lastActiveTickAt = 0;
-    state.dropLevel = randomDropLevel();   // 무작위 1~3단계
-    state.nextLevel = randomDropLevel();
+    initUpcomingQueue();                   // 앞으로 나올 8마리 큐 새로 채움
     state.pendingX = BOARD_W / 2;
     state.dropLocked = false;
     state.dragging = false;
@@ -1179,6 +1393,11 @@
     state.scoreSubmitted = false;
     state.choosingReward = false;
     state.resumeGraceUntil = 0;
+    state.needsMergeCheck = false;
+    state.mergeCheckUntil = 0;
+    state.feedbackShown = false;
+    state.mergeShowUntil = 0;
+    state.pendingResolution = null;
     state.itemInfoItem = null;
 
     resetItemCounts();      // 새 게임은 모든 아이템 0개로 초기화
@@ -1399,8 +1618,21 @@
       state.itemInfoItem = null;
     });
 
+    // 다음 고양이 미리보기 — 탭하면 앞으로 나올 5마리 드롭다운 토글
+    $('next-cat-trigger').addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleUpcomingPopup();
+    });
+    $('upcoming-popup').addEventListener('click', (e) => e.stopPropagation());
+    // 바깥을 누르면 드롭다운 닫기
+    document.addEventListener('click', () => {
+      const pop = document.getElementById('upcoming-popup');
+      if (pop && !pop.classList.contains('hidden')) pop.classList.add('hidden');
+    });
+
     // 진화 순서 보기 (게임 화면 밖의 버튼 → 팝업)
     $('btn-cat-guide').addEventListener('click', function () {
+      buildCatGuide();    // 그동안 새로 만난 고양이가 있으면 반영
       $('cat-guide-popup').classList.remove('hidden');
     });
     $('btn-cat-guide-close').addEventListener('click', function () {
@@ -1511,6 +1743,7 @@
   }
 
   function init() {
+    state.seenCats = loadSeenCats();   // 도감 로드 (1~3 자동 포함)
     bindEvents();
     buildKeypad();
     buildCatGuide();

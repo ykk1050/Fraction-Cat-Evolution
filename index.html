@@ -8,7 +8,7 @@
   <!-- CSS 단위(--vw, --vh) 기본값. JS 가 #app 실제 크기 기준으로 덮어씀.
        이 덕분에 PC 가로 모니터에서도 800px 컨테이너 기준으로 정확히 스케일됨. -->
   <style>:root{--vw:1vw;--vh:1vh}</style>
-  <link rel="stylesheet" href="style.css?v=20" />
+  <link rel="stylesheet" href="style.css?v=30" />
 </head>
 <body>
   <div id="app">
@@ -24,7 +24,7 @@
         <button id="btn-rank-start" class="btn btn-ghost">랭킹 보기</button>
         <button id="btn-help" class="btn btn-ghost">놀이 방법</button>
       </div>
-      <footer class="game-credit">Created by gamtudyssam using AI&nbsp;&nbsp;0.000121</footer>
+      <footer class="game-credit">Created by gamtudyssam using AI&nbsp;&nbsp;0.00013</footer>
     </section>
 
     <!-- ===================== 게임 화면 ===================== -->
@@ -54,7 +54,14 @@
 
       <div id="next-bar">
         <span class="next-label">다음 고양이</span>
-        <div id="next-cat" class="next-cat"></div>
+        <div id="next-cat-trigger" class="next-cat-trigger" role="button" aria-label="앞으로 나올 고양이 보기">
+          <div id="next-cat" class="next-cat"></div>
+          <span class="next-cat-arrow" aria-hidden="true">▼</span>
+        </div>
+        <div id="upcoming-popup" class="upcoming-popup hidden">
+          <div class="up-title">앞으로 나올 고양이</div>
+          <div id="upcoming-list" class="upcoming-list"></div>
+        </div>
         <button id="btn-cat-guide" class="btn btn-mini" aria-label="진화 순서 보기">📖 진화 순서</button>
         <button id="btn-bgm-toggle" class="btn btn-mini" aria-label="배경음악 켜기/끄기">🔊</button>
         <input id="bgm-volume" class="bgm-volume" type="range" min="0" max="100" value="40" aria-label="배경음악 볼륨" />
@@ -81,7 +88,7 @@
         </div>
         <p class="math-guide">두 고양이를 합치려면 문제를 풀어요!</p>
         <div id="math-question" class="math-question"></div>
-        <p class="math-hint">정답은 <b>기약분수</b>로 입력하세요. 대분수는 <b>자연수 칸</b>을 함께 써요.</p>
+        <p class="math-hint">정답은 <b>기약분수</b>로 입력하세요. 1보다 큰 답은 <b>대분수</b>(자연수 + 진분수)로 써요.</p>
         <div class="answer-area">
           <button type="button" id="ans-whole" class="ans-field placeholder" data-field="whole">자연수</button>
           <div class="frac-stack">
@@ -239,7 +246,7 @@
           <li>같은 고양이끼리 만나면 진화해요. 1~2단계는 <b>자동으로</b> 합쳐져요.</li>
           <li>3단계부터는 <b>분수 문제</b>를 풀어야 한 단계 진화해요!</li>
           <li>문제마다 <b>제한 시간</b>이 있어요. 시간이 0이 되면 진화 불가가 돼요.</li>
-          <li>답은 꼭 <b>기약분수</b>로 입력해요.</li>
+          <li>답은 <b>기약분수</b>로 입력해요. 1보다 큰 답은 <b>대분수</b>(자연수 + 진분수)로 써요.</li>
           <li>고양이가 빨간 선을 넘으면 게임이 끝나요.</li>
           <li>아이템을 사용해 어려운 순간을 넘겨요.</li>
         </ul>
@@ -256,8 +263,8 @@
 
   <!-- Matter.js 물리 엔진 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
-  <script src="math.js?v=20"></script>
-  <script src="gas.js?v=20"></script>
-  <script src="game.js?v=20"></script>
+  <script src="math.js?v=30"></script>
+  <script src="gas.js?v=30"></script>
+  <script src="game.js?v=30"></script>
 </body>
 </html>

@@ -162,6 +162,15 @@ function checkAnswer(wholeRaw, numerRaw, denomRaw, problem) {
   if (hasFrac && numer > 0 && gcd(numer, denom) !== 1) {
     return { status: 'not_reduced', message: '기약분수로 입력해주세요!' };
   }
+  // 가분수(분자 ≥ 분모) 거르기 — 대분수(또는 자연수) 형태로 입력 유도
+  //   · 정답값이 정수면 자연수 칸만으로 표기
+  //   · 정답값이 분수면 자연수 + 진분수(대분수) 로 표기
+  if (hasFrac && numer >= denom) {
+    if (problem.answer.d === 1) {
+      return { status: 'improper_form', message: '자연수 칸에 입력해주세요!' };
+    }
+    return { status: 'improper_form', message: '대분수로 입력해주세요!' };
+  }
   return { status: 'correct', message: '정답이에요! 고양이가 진화해요!' };
 }
 
@@ -170,6 +179,27 @@ function fractionHTML(f) {
   if (f.d === 1) return `<span class="fr-whole">${f.n}</span>`;
   return `<span class="fr"><span class="fr-n">${f.n}</span>` +
          `<span class="fr-d">${f.d}</span></span>`;
+}
+
+/* 대분수 형태로 렌더(가로선 분수 사용).
+   - 분모 1: 자연수만
+   - 진분수(n<d): 가로선 분수
+   - 가분수: 자연수 + 가로선 분수(진분수 부분) */
+function mixedFractionHTML(f) {
+  const n = Math.abs(f.n), d = f.d;
+  const sign = f.n < 0 ? '-' : '';
+  if (d === 1) return `<span class="fr-whole">${sign}${n}</span>`;
+  if (n < d) {
+    return sign
+      ? `<span class="fr-whole">${sign}</span>` + fractionHTML(f)
+      : fractionHTML(f);
+  }
+  const whole = Math.floor(n / d);
+  const rem = n % d;
+  if (rem === 0) return `<span class="fr-whole">${sign}${whole}</span>`;
+  return `<span class="fr-whole">${sign}${whole}</span>` +
+         `<span class="fr"><span class="fr-n">${rem}</span>` +
+         `<span class="fr-d">${d}</span></span>`;
 }
 function problemHTML(p) {
   return `${fractionHTML(p.a)}` +
