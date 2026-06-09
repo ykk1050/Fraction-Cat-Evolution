@@ -1229,6 +1229,9 @@
     if (state.gameOverPending) return;
     state.gameOverPending = true;
     state.gameOverCat = culprit || null;
+    // 문제를 푸는 중에 게임오버 조건이 발생하면, 수학 문제 팝업을 닫아
+    // 고양이가 경계선을 넘은 보드 장면이 보이도록 한 뒤 결과창으로 넘어간다.
+    if (state.problemActive) closeProblem();
     playSFX('drop', { volume: 0.8 });
     toast('앗! 고양이가 빨간 선을 넘었어요!', 1600);
     setTimeout(function () {
