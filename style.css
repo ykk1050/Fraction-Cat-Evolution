@@ -211,8 +211,14 @@ body { display: flex; align-items: center; justify-content: center; }
 #btn-bgm-toggle.muted { opacity: 0.55; }
 
 #board-wrap {
-  position: relative; flex: 1;
-  margin: 0 calc(5 * var(--vw));                /* 좌우폭을 조금 줄임 */
+  position: relative;
+  /* 게임이 진행되는 영역의 가로:세로 비율을 7.2:8 로 고정.
+     폭은 앱 폭의 90% 와 세로공간(56vh) 중 작은 쪽으로 정해 화면을 넘지 않게 함.
+     높이는 aspect-ratio 가 폭으로부터 자동 계산(폭 / 0.9). */
+  flex: 0 0 auto;
+  width: min(calc(90 * var(--vw)), calc(56 * var(--vh)));
+  aspect-ratio: 7.2 / 8;
+  margin: auto;                                 /* 남는 세로 공간에서 가운데 정렬 */
   border-radius: calc(3 * var(--vw)); overflow: hidden;
   background: linear-gradient(180deg, #20143f 0%, #160d2c 100%);
   box-shadow: inset 0 0 calc(6 * var(--vw)) rgba(0,0,0,.6);
