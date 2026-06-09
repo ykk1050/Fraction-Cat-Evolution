@@ -30,13 +30,16 @@ html, body {
   touch-action: manipulation;
 }
 
+/* 큰 스마트패드에서 화면 전체를 꽉 채우면 UI 가 지나치게 커 보이므로
+   #app 을 폰 비율(약 9:18)로 가운데 정렬해 작게 보여준다. */
+body { display: flex; align-items: center; justify-content: center; }
+
 #app {
   position: relative;
-  width: calc(100 * var(--vw));
-  height: calc(100 * var(--vh));
-  height: 100dvh;
+  /* 폭은 화면/세로비율 중 작은 쪽에 맞춰 결정 → 큰 태블릿에서 배율 축소 */
+  width: min(100vw, 480px, 56vh);
+  height: min(100dvh, 960px, calc(min(100vw, 480px, 56vh) * 2));
   margin: 0 auto;
-  max-width: 800px;
   background: linear-gradient(180deg, var(--bg-deep) 0%, var(--bg-mid) 100%);
   overflow: hidden;
 }

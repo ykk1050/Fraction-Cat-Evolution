@@ -126,6 +126,8 @@
     activeField: 'numer',                       // 현재 입력 중인 칸
     dragging: false,        // 보드 위에서 시작한 터치만 드롭으로 인정
     itemInfoItem: null,     // 현재 정보 팝업에 띄워둔 아이템 def
+    gameOverPending: false, // 라인 초과 감지 후 팝업 전까지 장면을 보여주는 중
+    gameOverCat: null,      // 게임오버를 유발한 고양이 (강조 표시용)
     choosingReward: false,  // 5연속 정답 보상 선택 중 (게임 일시정지)
     resumeGraceUntil: 0,    // 이 시각까지는 새 문제 충돌을 막음 (보상 후 안정화)
     needsMergeCheck: false, // 유예 중 스킵된 쌍이 있을 때 만료 직후 재검사 트리거
@@ -302,8 +304,23 @@
   /* =====================  캔버스 / 물리 세계  ===================== */
   function resizeCanvas() {
     const rect = boardWrap.getBoundingClientRect();
-    BOARD_W = Math.max(200, rect.width);
-    BOARD_H = Math.max(300, rect.height);
+    const newW = Math.max(200, rect.width);
+    const newH = Math.max(300, rect.height);
+    // ★ 화면 회전·리사이즈로 보드 크기가 바뀌면 기존 고양이들을 '비율' 기준으로
+    //    재배치한다. 이렇게 하지 않으면 가로↔세로 전환 때 좌표가 그대로 남아
+    //    새로 옮겨진 벽/바닥 안에 끼이고 물리 엔진이 화면 밖으로 튕겨내
+    //    고양이들이 전부 사라지는 버그가 생긴다.
+    if (world && BOARD_W > 0 && BOARD_H > 0 &&
+        (Math.abs(newW - BOARD_W) > 0.5 || Math.abs(newH - BOARD_H) > 0.5)) {
+      const sx = newW / BOARD_W, sy = newH / BOARD_H;
+      getCats().forEach((c) => {
+        Body.setPosition(c, { x: c.position.x * sx, y: c.position.y * sy });
+        Body.setVelocity(c, { x: 0, y: 0 });
+        Body.setAngularVelocity(c, 0);
+      });
+    }
+    BOARD_W = newW;
+    BOARD_H = newH;
     DPR = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = BOARD_W * DPR;
     canvas.height = BOARD_H * DPR;
@@ -312,6 +329,13 @@
     DROP_Y = BOARD_H * 0.075;
     state.pendingX = clamp(state.pendingX, 0, BOARD_W);
     if (world) buildWalls();
+  }
+
+  /* 터치 기기에서 가로모드일 때는 '세로로 돌려주세요' 경고가 떠 있는 상태.
+     이때 물리 엔진을 멈춰 고양이가 좁아진 보드에서 짓눌려 튕겨나가지 않게 한다. */
+  function isRotateBlocked() {
+    return !!(window.matchMedia &&
+      window.matchMedia('(orientation: landscape) and (pointer: coarse)').matches);
   }
 
   function buildWalls() {
@@ -670,6 +694,7 @@
   /* =====================  드롭 조작  ===================== */
   function dropCat() {
     if (!state.running || state.paused || state.problemActive) return;
+    if (state.gameOverPending || isRotateBlocked()) return;
     if (state.dropLocked || state.selectMode) return;
     if (state.mergeShowUntil > performance.now()) return;   // 합쳐진 모습 보는 중
 
@@ -1105,11 +1130,28 @@
   function render() {
     ctx.clearRect(0, 0, BOARD_W, BOARD_H);
 
+    const danger = state.gameOverPending;
+
+    // 위험 구역(선 위쪽)을 옅은 빨강으로 칠해 경계가 한눈에 보이게 함.
+    // 게임오버 연출 중에는 더 진하게 강조.
+    ctx.save();
+    ctx.fillStyle = danger ? 'rgba(255,92,92,0.28)' : 'rgba(255,92,92,0.07)';
+    ctx.fillRect(0, 0, BOARD_W, LINE_Y);
+    ctx.restore();
+
     // 게임 오버 경계선
     ctx.save();
-    ctx.strokeStyle = 'rgba(255,92,92,0.9)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([10, 8]);
+    if (danger) {
+      ctx.strokeStyle = 'rgba(255,60,60,1)';
+      ctx.lineWidth = 5;
+      ctx.setLineDash([]);
+      ctx.shadowColor = 'rgba(255,60,60,0.9)';
+      ctx.shadowBlur = 14;
+    } else {
+      ctx.strokeStyle = 'rgba(255,92,92,0.9)';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 8]);
+    }
     ctx.beginPath();
     ctx.moveTo(0, LINE_Y);
     ctx.lineTo(BOARD_W, LINE_Y);
@@ -1120,6 +1162,29 @@
     getCats().forEach((c) => {
       drawCat(c.position.x, c.position.y, c.angle, c.catLevel, c.circleRadius, c.dead);
     });
+
+    // 게임오버 연출 — 선을 넘은 고양이를 빨간 링으로 강조 + 안내 문구
+    if (danger) {
+      const c = state.gameOverCat;
+      if (c) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,60,60,0.95)';
+        ctx.lineWidth = Math.max(3, c.circleRadius * 0.12);
+        ctx.beginPath();
+        ctx.arc(c.position.x, c.position.y, c.circleRadius + 4, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.fillStyle = '#ff5c5c';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '900 ' + (BOARD_W * 0.075).toFixed(0) + 'px sans-serif';
+      ctx.shadowColor = 'rgba(0,0,0,0.7)';
+      ctx.shadowBlur = 8;
+      ctx.fillText('라인 초과! 게임 오버', BOARD_W / 2, LINE_Y / 2);
+      ctx.restore();
+    }
 
     // 떨어뜨릴 준비 중인 고양이 + 가이드 선
     if (state.running && !state.problemActive) {
@@ -1147,11 +1212,27 @@
       const speed = Math.hypot(c.velocity.x, c.velocity.y);
       if (top < LINE_Y && speed < 1.3) {
         if (!c.overSince) c.overSince = now;
-        else if (now - c.overSince > 1800) { endGame(); return; }
+        else if (now - c.overSince > 1800) { triggerGameOver(c); return; }
       } else {
         c.overSince = 0;
       }
     }
+  }
+
+  /* 게임오버 연출 — 곧바로 결과창을 띄우지 않고, 선을 넘은 고양이가
+     빨간 선 위에 멈춘 장면을 잠깐 보여준 뒤 결과창을 연다.
+     (엔진은 engineFrozen 으로 정지되어 장면이 그대로 유지된다) */
+  function triggerGameOver(culprit) {
+    if (state.gameOverPending) return;
+    state.gameOverPending = true;
+    state.gameOverCat = culprit || null;
+    playSFX('drop', { volume: 0.8 });
+    toast('앗! 고양이가 빨간 선을 넘었어요!', 1600);
+    setTimeout(function () {
+      state.gameOverPending = false;
+      state.gameOverCat = null;
+      endGame();
+    }, 1500);
   }
 
   /* =====================  메인 루프  ===================== */
@@ -1208,6 +1289,8 @@
       (state.problemActive && state.freezeProblem) ||
       state.choosingReward || !visible || !onGame ||
       state.feedbackShown ||
+      state.gameOverPending ||        // 라인 초과 장면을 멈춰서 보여주는 중
+      isRotateBlocked() ||            // 가로모드 경고 중에는 물리 정지
       state.mergeShowUntil > performance.now();
     if (!engineFrozen) {
       Engine.update(engine, 1000 / 60);
@@ -1330,6 +1413,8 @@
     state.mergeShowUntil = 0;
     state.pendingResolution = null;
     state.itemInfoItem = null;
+    state.gameOverPending = false;
+    state.gameOverCat = null;
     state.lastActiveTickAt = 0;
 
     // 고양이 복원 (좌표는 비율로 저장되어 보드 크기 변화에도 안전)
@@ -1399,6 +1484,8 @@
     state.mergeShowUntil = 0;
     state.pendingResolution = null;
     state.itemInfoItem = null;
+    state.gameOverPending = false;
+    state.gameOverCat = null;
 
     resetItemCounts();      // 새 게임은 모든 아이템 0개로 초기화
     buildItemBar();
@@ -1728,6 +1815,13 @@
 
     window.addEventListener('resize', () => {
       if (screens.game.classList.contains('active')) resizeCanvas();
+    });
+    // 화면 회전 시에도 보드를 다시 측정해 고양이 좌표를 재배치한다.
+    // (브라우저에 따라 회전 직후 크기 갱신이 늦어 한 박자 뒤에 한 번 더 호출)
+    window.addEventListener('orientationchange', () => {
+      if (!screens.game.classList.contains('active')) return;
+      resizeCanvas();
+      setTimeout(resizeCanvas, 300);
     });
   }
 
