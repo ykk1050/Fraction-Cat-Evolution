@@ -125,6 +125,7 @@
     selectMode: false,      // '꾹꾹이 펀치' 선택 대기
     items: {},
     scoreSubmitted: false,
+    submitting: false,      // 랭킹 전송 진행 중 — 중복 등록(버튼 연타) 방지
     ans: { whole: '', numer: '', denom: '' },  // 가상 키패드 입력값
     activeField: 'numer',                       // 현재 입력 중인 칸
     dragging: false,        // 보드 위에서 시작한 터치만 드롭으로 인정
@@ -1411,6 +1412,7 @@
     state.selectMode = false;
     state.currentPair = null;
     state.scoreSubmitted = false;
+    state.submitting = false;
     state.choosingReward = false;
     state.resumeGraceUntil = performance.now() + 800;
     state.needsMergeCheck = false;
@@ -1482,6 +1484,7 @@
     state.selectMode = false;
     state.currentPair = null;
     state.scoreSubmitted = false;
+    state.submitting = false;
     state.choosingReward = false;
     state.resumeGraceUntil = 0;
     state.needsMergeCheck = false;
@@ -1796,9 +1799,20 @@
     // 개인정보 확인 모달
     $('btn-privacy-yes').addEventListener('click', async () => {
       $('privacy-popup').classList.add('hidden');
+      // 이미 등록 완료면 랭킹만 보여줌
       if (state.scoreSubmitted) { openRank(null); return; }
+      // 전송이 진행 중이면(버튼 연타·더블탭) 두 번째 호출을 즉시 차단.
+      // ★ 가드를 await 이전에 동기적으로 세워야 같은 기록이 중복 등록되지 않음.
+      if (state.submitting) return;
+      state.submitting = true;
+      const yesBtn = $('btn-privacy-yes');
+      yesBtn.disabled = true;
+
       const nick = $('nickname-input').value.trim();
       const res = await Leaderboard.submit(buildEntry(nick));
+      state.submitting = false;
+      yesBtn.disabled = false;
+
       if (res.ok) {
         state.scoreSubmitted = true;
         $('gameover-popup').classList.add('hidden');
